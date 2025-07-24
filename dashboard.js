@@ -11,6 +11,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const apiCallsTotal = document.getElementById('apiCallsTotal');
   const lastUsed = document.getElementById('lastUsed');
 
+  // Get company context element
+  const companyContext = document.getElementById('companyContext');
+
   // Load saved API key and settings
   loadApiKey();
   loadSettings();
@@ -98,9 +101,13 @@ document.addEventListener('DOMContentLoaded', function() {
   // Save settings
   async function saveSettings() {
     const model = modelSelect.value;
+    const context = companyContext.value.trim();
     
     try {
-      await chrome.storage.sync.set({ default_model: model });
+      await chrome.storage.sync.set({ 
+        default_model: model,
+        company_context: context
+      });
       showStatusMessage('Settings saved successfully', 'success');
     } catch (error) {
       showStatusMessage('Error saving settings: ' + error.message, 'error');
@@ -110,9 +117,14 @@ document.addEventListener('DOMContentLoaded', function() {
   // Load settings
   async function loadSettings() {
     try {
-      const result = await chrome.storage.sync.get(['default_model']);
+      const result = await chrome.storage.sync.get(['default_model', 'company_context']);
+      
       if (result.default_model) {
         modelSelect.value = result.default_model;
+      }
+      
+      if (result.company_context) {
+        companyContext.value = result.company_context;
       }
     } catch (error) {
       console.error('Error loading settings:', error);

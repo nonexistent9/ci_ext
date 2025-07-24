@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const pageData = result.result;
       currentPageData = pageData; // Store for deeper analysis
 
-      // Process with AI (mock implementation - replace with actual AI service)
+      // Process with AI
       const features = await processWithAI(pageData);
 
       displayResults(features);
@@ -85,12 +85,18 @@ document.addEventListener('DOMContentLoaded', function () {
     // Update usage statistics
     await updateUsageStats();
 
+    // Get company context if available
+    const companyContext = await getCompanyContext();
+    const companyContextSection = companyContext ?
+      `\nYOUR COMPANY CONTEXT (For Comparison):
+${companyContext}\n` : '';
+
     const prompt = `Analyze this competitor's website and extract comprehensive competitive intelligence.
 
 WEBSITE ANALYSIS REQUEST:
 Company: ${pageData.title}
 URL: ${pageData.url}
-Meta Description: ${pageData.metadata.description || 'N/A'}
+Meta Description: ${pageData.metadata.description || 'N/A'}${companyContextSection}
 
 KEY PAGE ELEMENTS:
 Navigation: ${pageData.links.slice(0, 10).join(', ')}
@@ -111,9 +117,32 @@ Please provide a comprehensive competitive intelligence analysis including:
 7. BUSINESS MODEL INSIGHTS
 8. CUSTOMER SEGMENTS
 9. INTEGRATION CAPABILITIES
-10. GROWTH & SCALING FEATURES
+10. GROWTH & SCALING FEATURES${companyContext ? '\n11. COMPARISON WITH YOUR COMPANY' : ''}
 
 Format as a structured, actionable competitive intelligence report.`;
+
+    const model = await getDefaultModel();
+    const requestBody = {
+      model: model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a competitive intelligence analyst specializing in SaaS and technology companies. Analyze websites to extract key business features, competitive positioning, and strategic insights. Provide actionable intelligence in a structured format.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
+    };
+
+    // Use appropriate parameters based on model
+    if (model.includes('o3')) {
+      requestBody.max_completion_tokens = 2000;
+    } else {
+      requestBody.max_tokens = 2000;
+      requestBody.temperature = 0.3;
+    }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -121,21 +150,7 @@ Format as a structured, actionable competitive intelligence report.`;
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: await getDefaultModel(),
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a competitive intelligence analyst specializing in SaaS and technology companies. Analyze websites to extract key business features, competitive positioning, and strategic insights. Provide actionable intelligence in a structured format.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: 2000,
-        temperature: 0.3
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
@@ -145,6 +160,8 @@ Format as a structured, actionable competitive intelligence report.`;
 
     const data = await response.json();
     const analysis = data.choices[0].message.content;
+
+    const modelName = await getDefaultModel();
 
     return `🔍 COMPETITIVE INTELLIGENCE REPORT
 Generated: ${new Date().toLocaleString()}
@@ -164,7 +181,7 @@ ${analysis}
 ${pageData.links.slice(0, 8).map(link => `• ${link}`).join('\n')}
 
 ---
-Powered by OpenAI GPT-4o-mini | CI Feature Extractor`;
+Powered by OpenAI ${modelName} | CI Feature Extractor`;
   }
 
   // Deeper analysis with o3-mini
@@ -201,13 +218,19 @@ Powered by OpenAI GPT-4o-mini | CI Feature Extractor`;
 
 Your task is to perform deeper analysis on the provided competitive intelligence report and respond to the user's specific analytical request.`;
 
+    // Get company context if available
+    const companyContext = await getCompanyContext();
+    const companyContextSection = companyContext ?
+      `\nYOUR COMPANY CONTEXT (For Comparison):
+${companyContext}\n` : '';
+
     const analysisPrompt = `INITIAL COMPETITIVE ANALYSIS:
 ${initialAnalysis}
 
 ADDITIONAL CONTEXT:
 Company: ${pageData.title}
 URL: ${pageData.url}
-Page Content Sample: ${pageData.textContent.substring(0, 3000)}...
+Page Content Sample: ${pageData.textContent.substring(0, 3000)}...${companyContextSection}
 
 USER REQUEST FOR DEEPER ANALYSIS:
 ${userPrompt}
@@ -223,26 +246,36 @@ Please provide a comprehensive deeper analysis that builds upon the initial repo
 
 Format your response as a strategic analysis memo with clear sections and actionable recommendations.`;
 
+    const model = await getDefaultModel('o3-mini');
+    const requestBody = {
+      model: model,
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt
+        },
+        {
+          role: 'user',
+          content: analysisPrompt
+        }
+      ]
+    };
+
+    // Use appropriate parameters based on model
+    if (model.includes('o3')) {
+      requestBody.max_completion_tokens = 3000;
+    } else {
+      requestBody.max_tokens = 3000;
+      requestBody.temperature = 0.3;
+    }
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: await getDefaultModel('o3-mini'),
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          {
-            role: 'user',
-            content: analysisPrompt
-          }
-        ],
-        max_completion_tokens: 3000
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
@@ -253,9 +286,11 @@ Format your response as a strategic analysis memo with clear sections and action
     const data = await response.json();
     const deeperAnalysis = data.choices[0].message.content;
 
+    const modelName = await getDefaultModel('o3-mini');
+
     return `🧠 DEEPER STRATEGIC ANALYSIS
 Generated: ${new Date().toLocaleString()}
-Model: OpenAI o3-mini
+Model: OpenAI ${modelName}
 Source: ${pageData.url}
 
 USER PROMPT: "${userPrompt}"
@@ -266,9 +301,12 @@ ${deeperAnalysis}
 ${initialAnalysis}
 
 ---
-Powered by OpenAI o3-mini | Advanced CI Analysis`;
+Powered by OpenAI ${modelName} | Advanced CI Analysis`;
   }
 
+  // This function is no longer used as we're using AI for feature extraction
+  // Keeping it for reference or future use
+  /*
   function analyzeFeatures(pageData) {
     const features = [];
 
@@ -327,6 +365,7 @@ Powered by OpenAI o3-mini | Advanced CI Analysis`;
 
     return features.slice(0, 15); // Limit to 15 features
   }
+  */
 });
 
 // This function runs in the page context
@@ -460,5 +499,16 @@ async function getDefaultModel(defaultModel = 'gpt-4o-mini') {
   } catch (error) {
     console.error('Error getting default model:', error);
     return defaultModel; // Fallback
+  }
+}
+
+// Get company context from settings
+async function getCompanyContext() {
+  try {
+    const result = await chrome.storage.sync.get(['company_context']);
+    return result.company_context || ''; // Return empty string if not set
+  } catch (error) {
+    console.error('Error getting company context:', error);
+    return ''; // Fallback to empty string
   }
 }
