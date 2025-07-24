@@ -9,7 +9,8 @@ const CONFIG = {
 // Storage keys
 const STORAGE_KEYS = {
   API_KEY: 'openai_api_key',
-  DEFAULT_MODEL: 'default_model',
+  INITIAL_MODEL: 'initial_model',
+  DEEP_MODEL: 'deep_model',
   COMPANY_CONTEXT: 'company_context',
   EXTRACTION_HISTORY: 'extraction_history',
   API_CALLS_TODAY: 'api_calls_today',

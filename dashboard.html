@@ -106,11 +106,23 @@
     <div class="card">
       <h2>Extension Settings</h2>
       <div class="form-group">
-        <label for="modelSelect">Default AI Model</label>
-        <select id="modelSelect" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-          <option value="gpt-4o-mini">GPT-4o-mini</option>
-          <option value="o3-mini">o3-mini</option>
+        <label for="initialModelSelect">Initial Analysis Model</label>
+        <select id="initialModelSelect" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+          <option value="gpt-4o-mini">GPT-4o-mini (Fast & Cost-effective)</option>
+          <option value="gpt-4o">GPT-4o (Higher Quality, More Expensive)</option>
+          <option value="o3-mini">o3-mini (Advanced Reasoning, Cost-effective)</option>
+          <option value="o3">o3 (Most Advanced & Powerful, Premium)</option>
         </select>
+        <p style="font-size: 12px; color: #666; margin-top: 5px;">Model used for initial feature extraction and pricing analysis.</p>
+      </div>
+      
+      <div class="form-group">
+        <label for="deepModelSelect">Deep Analysis Model</label>
+        <select id="deepModelSelect" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+          <option value="o3-mini">o3-mini (Advanced Reasoning, Cost-effective)</option>
+          <option value="o3">o3 (Most Advanced & Powerful, Premium)</option>
+        </select>
+        <p style="font-size: 12px; color: #666; margin-top: 5px;">Model used for strategic deeper analysis ("Think More" feature).</p>
       </div>
       
       <div class="form-group">

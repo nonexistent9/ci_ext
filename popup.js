@@ -12,10 +12,19 @@ document.addEventListener('DOMContentLoaded', function () {
   let currentAnalysis = '';
   let currentPageData = null;
 
+  // Update the Think More button text based on the selected model
+  updateThinkMoreButtonText();
+
   extractBtn.addEventListener('click', extractFeatures);
   copyBtn.addEventListener('click', copyToClipboard);
   settingsBtn.addEventListener('click', openDashboard);
   thinkMoreBtn.addEventListener('click', performDeeperAnalysis);
+  
+  // Update the Think More button text when the popup is opened
+  async function updateThinkMoreButtonText() {
+    const model = await getDeepModel();
+    thinkMoreBtn.textContent = `🧠 Think More (${model})`;
+  }
 
   async function extractFeatures() {
     try {
@@ -141,7 +150,7 @@ Please provide a simple feature summary:
 Keep it simple and focused on features only. Avoid strategic analysis.`;
     }
 
-    const model = await getDefaultModel();
+    const model = await getInitialModel();
     const requestBody = {
       model: model,
       messages: [
@@ -181,7 +190,7 @@ Keep it simple and focused on features only. Avoid strategic analysis.`;
     const data = await response.json();
     const analysis = data.choices[0].message.content;
 
-    const modelName = await getDefaultModel();
+    const modelName = await getInitialModel();
 
     const reportType = isPricingPage ? 'PRICING ANALYSIS' : 'FEATURE EXTRACTION';
 
@@ -196,11 +205,12 @@ Powered by OpenAI ${modelName} | CI Feature Extractor
 💡 Use "Think More" for deeper strategic analysis`;
   }
 
-  // Deeper analysis with o3-mini
+  // Deeper analysis with o3 models only
   async function performDeeperAnalysis() {
     try {
       thinkMoreBtn.disabled = true;
-      showStatus('Performing deeper analysis with o3-mini...', 'loading');
+      const model = await getDeepModel();
+      showStatus(`Performing deeper analysis with ${model}...`, 'loading');
 
       const apiKey = await getStoredApiKey();
       if (!apiKey) {
@@ -222,7 +232,7 @@ Powered by OpenAI ${modelName} | CI Feature Extractor
     }
   }
 
-  // Process with o3-mini for deeper analysis
+  // Process with o3 models only for deeper analysis
   async function processWithO3Mini(initialAnalysis, pageData, userPrompt, apiKey) {
     // Update usage statistics
     await updateUsageStats();
@@ -258,7 +268,7 @@ Please provide a comprehensive deeper analysis that builds upon the initial repo
 
 Format your response as a strategic analysis memo with clear sections and actionable recommendations.`;
 
-    const model = await getDefaultModel('o3-mini');
+    const model = await getDeepModel();
     const requestBody = {
       model: model,
       messages: [
@@ -273,13 +283,8 @@ Format your response as a strategic analysis memo with clear sections and action
       ]
     };
 
-    // Use appropriate parameters based on model
-    if (model.includes('o3')) {
-      requestBody.max_completion_tokens = 3000;
-    } else {
-      requestBody.max_tokens = 3000;
-      requestBody.temperature = 0.3;
-    }
+    // o3 models always use max_completion_tokens (no temperature)
+    requestBody.max_completion_tokens = 3000;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -298,7 +303,7 @@ Format your response as a strategic analysis memo with clear sections and action
     const data = await response.json();
     const deeperAnalysis = data.choices[0].message.content;
 
-    const modelName = await getDefaultModel('o3-mini');
+    const modelName = await getDeepModel();
 
     return `🧠 DEEPER STRATEGIC ANALYSIS
 Generated: ${new Date().toLocaleString()}
@@ -503,13 +508,24 @@ async function updateUsageStats() {
   }
 }
 
-// Get default model from settings
-async function getDefaultModel(defaultModel = 'gpt-4o-mini') {
+// Get initial analysis model from settings
+async function getInitialModel(defaultModel = 'gpt-4o-mini') {
   try {
-    const result = await chrome.storage.sync.get(['default_model']);
-    return result.default_model || defaultModel; // Default if not set
+    const result = await chrome.storage.sync.get(['initial_model']);
+    return result.initial_model || defaultModel; // Default if not set
   } catch (error) {
-    console.error('Error getting default model:', error);
+    console.error('Error getting initial model:', error);
+    return defaultModel; // Fallback
+  }
+}
+
+// Get deep analysis model from settings
+async function getDeepModel(defaultModel = 'o3-mini') {
+  try {
+    const result = await chrome.storage.sync.get(['deep_model']);
+    return result.deep_model || defaultModel; // Default if not set
+  } catch (error) {
+    console.error('Error getting deep model:', error);
     return defaultModel; // Fallback
   }
 }
