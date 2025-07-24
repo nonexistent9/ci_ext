@@ -1,10 +1,9 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   const extractBtn = document.getElementById('extractBtn');
   const status = document.getElementById('status');
   const results = document.getElementById('results');
   const copyBtn = document.getElementById('copyBtn');
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  const saveKeyBtn = document.getElementById('saveKeyBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
   const thinkMoreSection = document.getElementById('thinkMoreSection');
   const thinkMoreBtn = document.getElementById('thinkMoreBtn');
   const customPrompt = document.getElementById('customPrompt');
@@ -13,41 +12,38 @@ document.addEventListener('DOMContentLoaded', function() {
   let currentAnalysis = '';
   let currentPageData = null;
 
-  // Load saved API key
-  loadApiKey();
-
   extractBtn.addEventListener('click', extractFeatures);
   copyBtn.addEventListener('click', copyToClipboard);
-  saveKeyBtn.addEventListener('click', saveApiKey);
+  settingsBtn.addEventListener('click', openDashboard);
   thinkMoreBtn.addEventListener('click', performDeeperAnalysis);
 
   async function extractFeatures() {
     try {
       extractBtn.disabled = true;
       showStatus('Extracting features...', 'loading');
-      
+
       // Get current tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      
+
       // Inject content script and extract page data
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         function: extractPageContent
       });
-      
+
       if (!result.result) {
         throw new Error('Failed to extract page content');
       }
-      
+
       const pageData = result.result;
       currentPageData = pageData; // Store for deeper analysis
-      
+
       // Process with AI (mock implementation - replace with actual AI service)
       const features = await processWithAI(pageData);
-      
+
       displayResults(features);
       showStatus('Features extracted successfully!', 'success');
-      
+
     } catch (error) {
       console.error('Error:', error);
       showStatus('Error: ' + error.message, 'error');
@@ -83,8 +79,11 @@ document.addEventListener('DOMContentLoaded', function() {
   async function processWithAI(pageData) {
     const apiKey = await getStoredApiKey();
     if (!apiKey) {
-      throw new Error('OpenAI API key not found. Please enter your API key.');
+      throw new Error('OpenAI API key not found. Please set your API key in the dashboard.');
     }
+
+    // Update usage statistics
+    await updateUsageStats();
 
     const prompt = `Analyze this competitor's website and extract comprehensive competitive intelligence.
 
@@ -123,7 +122,7 @@ Format as a structured, actionable competitive intelligence report.`;
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: await getDefaultModel(),
         messages: [
           {
             role: 'system',
@@ -146,7 +145,7 @@ Format as a structured, actionable competitive intelligence report.`;
 
     const data = await response.json();
     const analysis = data.choices[0].message.content;
-    
+
     return `🔍 COMPETITIVE INTELLIGENCE REPORT
 Generated: ${new Date().toLocaleString()}
 Source: ${pageData.url}
@@ -173,19 +172,19 @@ Powered by OpenAI GPT-4o-mini | CI Feature Extractor`;
     try {
       thinkMoreBtn.disabled = true;
       showStatus('Performing deeper analysis with o3-mini...', 'loading');
-      
+
       const apiKey = await getStoredApiKey();
       if (!apiKey) {
         throw new Error('OpenAI API key not found. Please enter your API key.');
       }
 
       const userPrompt = customPrompt.value.trim() || 'Provide deeper strategic insights and actionable recommendations based on this competitive analysis.';
-      
+
       const deeperAnalysis = await processWithO3Mini(currentAnalysis, currentPageData, userPrompt, apiKey);
-      
+
       displayResults(deeperAnalysis);
       showStatus('Deeper analysis completed!', 'success');
-      
+
     } catch (error) {
       console.error('Error:', error);
       showStatus('Error: ' + error.message, 'error');
@@ -196,6 +195,8 @@ Powered by OpenAI GPT-4o-mini | CI Feature Extractor`;
 
   // Process with o3-mini for deeper analysis
   async function processWithO3Mini(initialAnalysis, pageData, userPrompt, apiKey) {
+    // Update usage statistics
+    await updateUsageStats();
     const systemPrompt = `You are an expert competitive intelligence strategist with deep expertise in business strategy, market analysis, and competitive positioning. You excel at extracting actionable insights from competitive data and providing strategic recommendations.
 
 Your task is to perform deeper analysis on the provided competitive intelligence report and respond to the user's specific analytical request.`;
@@ -229,7 +230,7 @@ Format your response as a strategic analysis memo with clear sections and action
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'o3-mini',
+        model: await getDefaultModel('o3-mini'),
         messages: [
           {
             role: 'system',
@@ -251,7 +252,7 @@ Format your response as a strategic analysis memo with clear sections and action
 
     const data = await response.json();
     const deeperAnalysis = data.choices[0].message.content;
-    
+
     return `🧠 DEEPER STRATEGIC ANALYSIS
 Generated: ${new Date().toLocaleString()}
 Model: OpenAI o3-mini
@@ -270,42 +271,42 @@ Powered by OpenAI o3-mini | Advanced CI Analysis`;
 
   function analyzeFeatures(pageData) {
     const features = [];
-    
+
     // Analyze headings for features
     pageData.headings.forEach(heading => {
       const text = heading.text || heading;
-      if (text.toLowerCase().includes('feature') || 
-          text.toLowerCase().includes('solution') ||
-          text.toLowerCase().includes('service') ||
-          text.toLowerCase().includes('product') ||
-          text.toLowerCase().includes('benefit') ||
-          text.toLowerCase().includes('capability')) {
+      if (text.toLowerCase().includes('feature') ||
+        text.toLowerCase().includes('solution') ||
+        text.toLowerCase().includes('service') ||
+        text.toLowerCase().includes('product') ||
+        text.toLowerCase().includes('benefit') ||
+        text.toLowerCase().includes('capability')) {
         features.push(`• ${text}`);
       }
     });
-    
+
     // Analyze buttons for key actions
     pageData.buttons.forEach(button => {
       if (button.length > 3 && button.length < 50) {
         const lowerButton = button.toLowerCase();
-        if (lowerButton.includes('try') || lowerButton.includes('demo') || 
-            lowerButton.includes('start') || lowerButton.includes('get') ||
-            lowerButton.includes('sign up') || lowerButton.includes('learn')) {
+        if (lowerButton.includes('try') || lowerButton.includes('demo') ||
+          lowerButton.includes('start') || lowerButton.includes('get') ||
+          lowerButton.includes('sign up') || lowerButton.includes('learn')) {
           features.push(`• Call-to-action: ${button}`);
         }
       }
     });
-    
+
     // Analyze navigation for service areas
     pageData.links.forEach(link => {
       const lowerLink = link.toLowerCase();
       if (lowerLink.includes('pricing') || lowerLink.includes('features') ||
-          lowerLink.includes('solutions') || lowerLink.includes('products') ||
-          lowerLink.includes('services') || lowerLink.includes('platform')) {
+        lowerLink.includes('solutions') || lowerLink.includes('products') ||
+        lowerLink.includes('services') || lowerLink.includes('platform')) {
         features.push(`• Service area: ${link}`);
       }
     });
-    
+
     // Analyze meta description for key features
     if (pageData.metadata.description) {
       const desc = pageData.metadata.description.toLowerCase();
@@ -316,14 +317,14 @@ Powered by OpenAI o3-mini | Advanced CI Analysis`;
         }
       });
     }
-    
+
     // Add generic features if none found
     if (features.length === 0) {
       features.push('• Web-based platform');
       features.push('• User interface available');
       features.push('• Online service offering');
     }
-    
+
     return features.slice(0, 15); // Limit to 15 features
   }
 });
@@ -342,7 +343,7 @@ function extractPageContent() {
     images: [],
     metadata: {}
   };
-  
+
   // Extract headings
   const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
   headings.forEach(h => {
@@ -354,7 +355,7 @@ function extractPageContent() {
       });
     }
   });
-  
+
   // Extract button text
   const buttons = document.querySelectorAll('button, .btn, [role="button"], input[type="submit"], a[class*="btn"]');
   buttons.forEach(btn => {
@@ -363,7 +364,7 @@ function extractPageContent() {
       data.buttons.push(text);
     }
   });
-  
+
   // Extract forms
   const forms = document.querySelectorAll('form');
   data.forms = Array.from(forms).map(form => ({
@@ -371,7 +372,7 @@ function extractPageContent() {
     method: form.method,
     inputs: form.querySelectorAll('input').length
   }));
-  
+
   // Extract navigation links
   const navLinks = document.querySelectorAll('nav a, .nav a, .menu a, .navigation a');
   navLinks.forEach(link => {
@@ -380,7 +381,7 @@ function extractPageContent() {
       data.links.push(text);
     }
   });
-  
+
   // Extract images with alt text
   const images = document.querySelectorAll('img[alt]');
   images.forEach(img => {
@@ -388,7 +389,7 @@ function extractPageContent() {
       data.images.push(img.alt);
     }
   });
-  
+
   // Extract meta tags
   const metaTags = document.querySelectorAll('meta[name], meta[property]');
   metaTags.forEach(meta => {
@@ -398,44 +399,66 @@ function extractPageContent() {
       data.metadata[name] = content;
     }
   });
-  
+
   return data;
 }
 
 // API Key management functions
-async function saveApiKey() {
-    const apiKey = apiKeyInput.value.trim();
-    if (!apiKey) {
-      showStatus('Please enter an API key', 'error');
-      return;
-    }
-    
-    try {
-      await chrome.storage.sync.set({ openai_api_key: apiKey });
-      apiKeyInput.value = '';
-      showStatus('API key saved successfully', 'success');
-    } catch (error) {
-      showStatus('Error saving API key', 'error');
-    }
-  }
-
-async function loadApiKey() {
-    try {
-      const result = await chrome.storage.sync.get(['openai_api_key']);
-      if (result.openai_api_key) {
-        apiKeyInput.placeholder = 'API key saved ✓';
-      }
-    } catch (error) {
-      console.error('Error loading API key:', error);
-    }
-  }
+function openDashboard() {
+  chrome.runtime.openOptionsPage();
+}
 
 async function getStoredApiKey() {
-    try {
-      const result = await chrome.storage.sync.get(['openai_api_key']);
-      return result.openai_api_key;
-    } catch (error) {
-      console.error('Error getting API key:', error);
+  try {
+    const result = await chrome.storage.sync.get(['openai_api_key']);
+    if (!result.openai_api_key) {
+      showStatus('API key not found. Please set your API key in the dashboard.', 'error');
+      setTimeout(() => {
+        openDashboard();
+      }, 1500);
       return null;
     }
+    return result.openai_api_key;
+  } catch (error) {
+    console.error('Error getting API key:', error);
+    return null;
   }
+}
+
+// Update usage statistics
+async function updateUsageStats() {
+  try {
+    // Get current stats
+    const result = await chrome.storage.sync.get(['api_calls_today', 'api_calls_total', 'last_used', 'last_used_date']);
+
+    const today = new Date().toDateString();
+    let apiCallsToday = result.api_calls_today || 0;
+    let apiCallsTotal = result.api_calls_total || 0;
+
+    // Reset daily counter if it's a new day
+    if (result.last_used_date !== today) {
+      apiCallsToday = 0;
+    }
+
+    // Update stats
+    await chrome.storage.sync.set({
+      api_calls_today: apiCallsToday + 1,
+      api_calls_total: apiCallsTotal + 1,
+      last_used: new Date().toISOString(),
+      last_used_date: today
+    });
+  } catch (error) {
+    console.error('Error updating usage stats:', error);
+  }
+}
+
+// Get default model from settings
+async function getDefaultModel(defaultModel = 'gpt-4o-mini') {
+  try {
+    const result = await chrome.storage.sync.get(['default_model']);
+    return result.default_model || defaultModel; // Default if not set
+  } catch (error) {
+    console.error('Error getting default model:', error);
+    return defaultModel; // Fallback
+  }
+}

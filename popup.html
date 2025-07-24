@@ -125,11 +125,6 @@
     <h3>CI Feature Extractor</h3>
   </div>
   
-  <div id="apiKeySection" class="api-key-section">
-    <input type="password" id="apiKeyInput" placeholder="Enter OpenAI API Key" class="api-input">
-    <button id="saveKeyBtn" class="save-key-btn">Save Key</button>
-  </div>
-  
   <button id="extractBtn" class="extract-btn">Extract Features</button>
   
   <div id="status" class="status" style="display: none;"></div>
@@ -141,6 +136,10 @@
   <div id="thinkMoreSection" style="display: none;">
     <textarea id="customPrompt" placeholder="Enter custom prompt for deeper analysis..." class="custom-prompt"></textarea>
     <button id="thinkMoreBtn" class="think-more-btn">🧠 Think More (o3-mini)</button>
+  </div>
+  
+  <div style="text-align: right; margin-top: 16px;">
+    <a href="#" id="settingsBtn" style="color: #6c757d; font-size: 12px; text-decoration: none;">⚙️ Settings</a>
   </div>
   
   <script src="popup.js"></script>
