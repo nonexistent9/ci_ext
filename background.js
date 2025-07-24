@@ -1,6 +1,5 @@
 // Background service worker
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('CI Feature Extractor installed');
   
   // Create context menu item for dashboard
   chrome.contextMenus.create({

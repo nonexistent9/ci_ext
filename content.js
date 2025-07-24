@@ -1,5 +1,4 @@
 // Content script for additional page interaction if needed
-console.log('CI Feature Extractor content script loaded');
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

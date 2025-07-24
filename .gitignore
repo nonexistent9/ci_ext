@@ -34,3 +34,18 @@ Thumbs.db
 *.crx
 *.pem
 *.zip
+
+# Security and sensitive files
+*.key
+*.cert
+*.p12
+config.local.js
+secrets.js
+.env.local
+.env.production
+
+# User data and logs
+user_data/
+logs/
+*.sqlite
+*.db
