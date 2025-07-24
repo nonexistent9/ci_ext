@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', function () {
   async function extractFeatures() {
     try {
       extractBtn.disabled = true;
-      showStatus('Extracting features...', 'loading');
+      showStatus('Analyzing page content...', 'loading');
 
       // Get current tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const features = await processWithAI(pageData);
 
       displayResults(features);
-      showStatus('Features extracted successfully!', 'success');
+      showStatus('Analysis completed successfully!', 'success');
 
     } catch (error) {
       console.error('Error:', error);
@@ -91,35 +91,55 @@ document.addEventListener('DOMContentLoaded', function () {
       `\nYOUR COMPANY CONTEXT (For Comparison):
 ${companyContext}\n` : '';
 
-    const prompt = `Analyze this competitor's website and extract comprehensive competitive intelligence.
+    // Determine if this is a pricing page
+    const isPricingPage = pageData.url.toLowerCase().includes('pricing') ||
+      pageData.title.toLowerCase().includes('pricing') ||
+      pageData.textContent.toLowerCase().includes('plan') && pageData.textContent.toLowerCase().includes('price');
 
-WEBSITE ANALYSIS REQUEST:
+    let prompt;
+    if (isPricingPage) {
+      prompt = `Extract pricing information from this competitor's pricing page.
+
+PRICING PAGE ANALYSIS:
 Company: ${pageData.title}
-URL: ${pageData.url}
-Meta Description: ${pageData.metadata.description || 'N/A'}${companyContextSection}
+URL: ${pageData.url}${companyContextSection}
 
-KEY PAGE ELEMENTS:
-Navigation: ${pageData.links.slice(0, 10).join(', ')}
-Main Headings: ${pageData.headings.map(h => h.text || h).slice(0, 10).join(', ')}
-Call-to-Actions: ${pageData.buttons.slice(0, 10).join(', ')}
-
-FULL PAGE CONTENT:
+PAGE CONTENT:
 ${pageData.textContent.substring(0, 8000)}...
 
-Please provide a comprehensive competitive intelligence analysis including:
+Please provide a simple pricing analysis:
 
-1. CORE PRODUCT FEATURES & CAPABILITIES
-2. TARGET MARKET & USE CASES  
-3. PRICING MODEL INDICATORS
-4. TECHNOLOGY STACK CLUES
-5. COMPETITIVE POSITIONING
-6. UNIQUE VALUE PROPOSITIONS
-7. BUSINESS MODEL INSIGHTS
-8. CUSTOMER SEGMENTS
-9. INTEGRATION CAPABILITIES
-10. GROWTH & SCALING FEATURES${companyContext ? '\n11. COMPARISON WITH YOUR COMPANY' : ''}
+1. PRICING PLANS (list each plan with key details)
+2. PRICING STRUCTURE (monthly/annual, per user, etc.)
+3. KEY FEATURES BY PLAN
+4. FREE TRIAL/FREEMIUM OPTIONS
+5. ENTERPRISE/CUSTOM PRICING${companyContext ? '\n6. PRICING COMPARISON WITH YOUR COMPANY' : ''}
 
-Format as a structured, actionable competitive intelligence report.`;
+Keep it concise and focused on pricing details only.`;
+    } else {
+      prompt = `Extract the key features and capabilities from this competitor's website.
+
+FEATURE EXTRACTION:
+Company: ${pageData.title}
+URL: ${pageData.url}${companyContextSection}
+
+KEY PAGE ELEMENTS:
+Main Headings: ${pageData.headings.map(h => h.text || h).slice(0, 15).join(', ')}
+Call-to-Actions: ${pageData.buttons.slice(0, 10).join(', ')}
+
+PAGE CONTENT:
+${pageData.textContent.substring(0, 8000)}...
+
+Please provide a simple feature summary:
+
+1. CORE FEATURES (list main product features)
+2. KEY CAPABILITIES (what the product does)
+3. TARGET USERS (who it's for)
+4. INTEGRATIONS (if mentioned)
+5. UNIQUE SELLING POINTS${companyContext ? '\n6. FEATURE COMPARISON WITH YOUR COMPANY' : ''}
+
+Keep it simple and focused on features only. Avoid strategic analysis.`;
+    }
 
     const model = await getDefaultModel();
     const requestBody = {
@@ -127,7 +147,7 @@ Format as a structured, actionable competitive intelligence report.`;
       messages: [
         {
           role: 'system',
-          content: 'You are a competitive intelligence analyst specializing in SaaS and technology companies. Analyze websites to extract key business features, competitive positioning, and strategic insights. Provide actionable intelligence in a structured format.'
+          content: 'You are a feature extraction specialist. Your job is to quickly identify and summarize the key features, capabilities, and pricing information from competitor websites. Be concise and factual. Avoid strategic analysis or deep insights - just extract the core information clearly.'
         },
         {
           role: 'user',
@@ -163,25 +183,17 @@ Format as a structured, actionable competitive intelligence report.`;
 
     const modelName = await getDefaultModel();
 
-    return `🔍 COMPETITIVE INTELLIGENCE REPORT
+    const reportType = isPricingPage ? 'PRICING ANALYSIS' : 'FEATURE EXTRACTION';
+
+    return `📋 ${reportType} REPORT
 Generated: ${new Date().toLocaleString()}
 Source: ${pageData.url}
 
 ${analysis}
 
-📊 TECHNICAL METRICS:
-• Page Sections: ${pageData.headings.length}
-• Interactive Elements: ${pageData.buttons.length}  
-• Forms: ${pageData.forms.length}
-• Images: ${pageData.images.length}
-• Content Size: ${Math.round(pageData.textContent.length / 1024)}KB
-• HTML Size: ${Math.round(pageData.htmlSource.length / 1024)}KB
-
-🔗 KEY NAVIGATION:
-${pageData.links.slice(0, 8).map(link => `• ${link}`).join('\n')}
-
 ---
-Powered by OpenAI ${modelName} | CI Feature Extractor`;
+Powered by OpenAI ${modelName} | CI Feature Extractor
+💡 Use "Think More" for deeper strategic analysis`;
   }
 
   // Deeper analysis with o3-mini
