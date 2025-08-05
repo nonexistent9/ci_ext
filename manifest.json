@@ -26,5 +26,5 @@
   "background": {
     "service_worker": "background.js"
   },
-  "options_page": "dashboard.html"
+  "options_page": "dashboard-new.html"
 }

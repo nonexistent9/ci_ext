@@ -81,6 +81,102 @@
     .hidden {
       display: none;
     }
+    .analysis-item {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 15px;
+      background: #fafafa;
+    }
+    .analysis-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .analysis-title {
+      font-weight: 600;
+      color: #333;
+      font-size: 14px;
+      flex: 1;
+      margin-right: 10px;
+    }
+    .analysis-meta {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .analysis-type {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      margin-right: 8px;
+    }
+    .analysis-type.pricing {
+      background: #e3f2fd;
+      color: #1976d2;
+    }
+    .analysis-type.feature {
+      background: #f3e5f5;
+      color: #7b1fa2;
+    }
+    .analysis-content {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+    .analysis-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .analysis-actions button {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 3px;
+    }
+    .btn-view {
+      background: #28a745;
+    }
+    .btn-view:hover {
+      background: #218838;
+    }
+    .btn-copy {
+      background: #17a2b8;
+    }
+    .btn-copy:hover {
+      background: #138496;
+    }
+    .btn-delete {
+      background: #dc3545;
+    }
+    .btn-delete:hover {
+      background: #c82333;
+    }
+    .analysis-controls {
+      margin-bottom: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .filter-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .filter-controls select {
+      padding: 6px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -141,6 +237,27 @@
       <p>API Calls Today: <span id="apiCallsToday">0</span></p>
       <p>Total API Calls: <span id="apiCallsTotal">0</span></p>
       <p>Last Used: <span id="lastUsed">Never</span></p>
+    </div>
+    
+    <div class="card">
+      <h2>Saved Analyses</h2>
+      <div class="analysis-controls">
+        <div class="filter-controls">
+          <label for="typeFilter">Filter:</label>
+          <select id="typeFilter">
+            <option value="all">All Types</option>
+            <option value="feature">Feature Analysis</option>
+            <option value="pricing">Pricing Analysis</option>
+          </select>
+          <button id="clearAllBtn" class="btn-delete">Clear All</button>
+        </div>
+        <div>
+          <button id="exportAllBtn">Export All</button>
+        </div>
+      </div>
+      <div id="analysesContainer">
+        <p id="noAnalyses" style="color: #666; font-style: italic;">No analyses saved yet. Run an analysis and click "Save Analysis" to store it here.</p>
+      </div>
     </div>
   </div>
 

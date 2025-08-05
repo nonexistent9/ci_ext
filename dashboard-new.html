@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CI Feature Extractor - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 222.2 84% 4.9%;
+      --card: 0 0% 100%;
+      --card-foreground: 222.2 84% 4.9%;
+      --popover: 0 0% 100%;
+      --popover-foreground: 222.2 84% 4.9%;
+      --primary: 221.2 83.2% 53.3%;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 210 40% 96%;
+      --secondary-foreground: 222.2 84% 4.9%;
+      --muted: 210 40% 96%;
+      --muted-foreground: 215.4 16.3% 46.9%;
+      --accent: 210 40% 96%;
+      --accent-foreground: 222.2 84% 4.9%;
+      --destructive: 0 84.2% 60.2%;
+      --destructive-foreground: 210 40% 98%;
+      --border: 214.3 31.8% 91.4%;
+      --input: 214.3 31.8% 91.4%;
+      --ring: 221.2 83.2% 53.3%;
+      --radius: 0.5rem;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      line-height: 1.5;
+    }
+    
+    .dashboard-container {
+      display: flex;
+      min-height: 100vh;
+    }
+    
+    /* Sidebar */
+    .sidebar {
+      width: 280px;
+      background-color: hsl(var(--card));
+      border-right: 1px solid hsl(var(--border));
+      padding: 24px 0;
+      flex-shrink: 0;
+    }
+    
+    .sidebar-header {
+      padding: 0 24px 24px;
+      border-bottom: 1px solid hsl(var(--border));
+    }
+    
+    .sidebar-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: hsl(var(--foreground));
+      margin-bottom: 4px;
+    }
+    
+    .sidebar-subtitle {
+      font-size: 14px;
+      color: hsl(var(--muted-foreground));
+    }
+    
+    .sidebar-nav {
+      padding: 24px 16px;
+    }
+    
+    .nav-section {
+      margin-bottom: 32px;
+    }
+    
+    .nav-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: hsl(var(--muted-foreground));
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+      padding: 0 8px;
+    }
+    
+    .nav-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin-bottom: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      color: hsl(var(--muted-foreground));
+    }
+    
+    .nav-item:hover {
+      background-color: hsl(var(--accent));
+      color: hsl(var(--accent-foreground));
+    }
+    
+    .nav-item.active {
+      background-color: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+    }
+    
+    .nav-item-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+    
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      background-color: hsl(var(--muted));
+      overflow: auto;
+    }
+    
+    .content-header {
+      background-color: hsl(var(--card));
+      border-bottom: 1px solid hsl(var(--border));
+      padding: 24px 32px;
+    }
+    
+    .page-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: hsl(var(--foreground));
+      margin-bottom: 4px;
+    }
+    
+    .page-description {
+      font-size: 16px;
+      color: hsl(var(--muted-foreground));
+    }
+    
+    .content-body {
+      padding: 32px;
+    }
+    
+    /* Cards */
+    .card {
+      background-color: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: calc(var(--radius) + 2px);
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    }
+    
+    .card-header {
+      margin-bottom: 20px;
+    }
+    
+    .card-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: hsl(var(--card-foreground));
+      margin-bottom: 4px;
+    }
+    
+    .card-description {
+      font-size: 14px;
+      color: hsl(var(--muted-foreground));
+    }
+    
+    /* Form Elements */
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: hsl(var(--foreground));
+      margin-bottom: 8px;
+    }
+    
+    .input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      font-size: 14px;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      transition: border-color 0.15s ease;
+    }
+    
+    .input:focus {
+      outline: none;
+      border-color: hsl(var(--ring));
+      box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+    }
+    
+    .select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      font-size: 14px;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      cursor: pointer;
+    }
+    
+    .textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 10px 12px;
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      font-size: 14px;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      resize: vertical;
+      font-family: inherit;
+    }
+    
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: 1px solid transparent;
+      text-decoration: none;
+    }
+    
+    .btn-primary {
+      background-color: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+    }
+    
+    .btn-primary:hover {
+      background-color: hsl(var(--primary) / 0.9);
+    }
+    
+    .btn-secondary {
+      background-color: hsl(var(--secondary));
+      color: hsl(var(--secondary-foreground));
+      border-color: hsl(var(--border));
+    }
+    
+    .btn-secondary:hover {
+      background-color: hsl(var(--secondary) / 0.8);
+    }
+    
+    .btn-destructive {
+      background-color: hsl(var(--destructive));
+      color: hsl(var(--destructive-foreground));
+    }
+    
+    .btn-destructive:hover {
+      background-color: hsl(var(--destructive) / 0.9);
+    }
+    
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    
+    /* Analysis Cards */
+    .analysis-grid {
+      display: grid;
+      gap: 16px;
+    }
+    
+    .analysis-card {
+      background-color: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: all 0.15s ease;
+    }
+    
+    .analysis-card:hover {
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+    
+    .analysis-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    
+    .analysis-title {
+      font-weight: 600;
+      color: hsl(var(--card-foreground));
+      font-size: 16px;
+      line-height: 1.4;
+      flex: 1;
+      margin-right: 12px;
+    }
+    
+    .analysis-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .badge-feature {
+      background-color: hsl(262 83% 58% / 0.1);
+      color: hsl(262 83% 58%);
+    }
+    
+    .badge-pricing {
+      background-color: hsl(221 83% 53% / 0.1);
+      color: hsl(221 83% 53%);
+    }
+    
+    .analysis-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: hsl(var(--muted-foreground));
+    }
+    
+    .analysis-content {
+      background-color: hsl(var(--muted));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      padding: 12px;
+      font-size: 13px;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 16px;
+      display: none;
+    }
+    
+    .analysis-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    /* Toolbar */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding: 16px 20px;
+      background-color: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+    }
+    
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    /* Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .stat-card {
+      background-color: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: hsl(var(--muted-foreground));
+      margin-bottom: 4px;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: hsl(var(--foreground));
+    }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: hsl(var(--muted-foreground));
+    }
+    
+    .empty-state-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      opacity: 0.5;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 240px;
+      }
+      
+      .content-body {
+        padding: 24px 20px;
+      }
+      
+      .page-title {
+        font-size: 24px;
+      }
+    }
+    
+    /* Analysis Sidebar */
+    .analysis-sidebar {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 500px;
+      height: 100vh;
+      background-color: hsl(var(--card));
+      border-left: 1px solid hsl(var(--border));
+      box-shadow: -4px 0 6px -1px rgb(0 0 0 / 0.1);
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .analysis-sidebar.open {
+      transform: translateX(0);
+    }
+    
+    .analysis-sidebar-header {
+      padding: 24px;
+      border-bottom: 1px solid hsl(var(--border));
+      flex-shrink: 0;
+    }
+    
+    .analysis-sidebar-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: hsl(var(--foreground));
+      margin-bottom: 8px;
+      padding-right: 40px;
+    }
+    
+    .analysis-sidebar-meta {
+      font-size: 14px;
+      color: hsl(var(--muted-foreground));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    
+    .analysis-sidebar-close {
+      position: absolute;
+      top: 24px;
+      right: 24px;
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: hsl(var(--muted-foreground));
+      transition: all 0.15s ease;
+    }
+    
+    .analysis-sidebar-close:hover {
+      background-color: hsl(var(--accent));
+      color: hsl(var(--accent-foreground));
+    }
+    
+    .analysis-sidebar-content {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+    }
+    
+    .analysis-sidebar-text {
+      background-color: hsl(var(--muted));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      padding: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    
+    .analysis-sidebar-actions {
+      padding: 24px;
+      border-top: 1px solid hsl(var(--border));
+      flex-shrink: 0;
+    }
+    
+    .analysis-sidebar-actions .btn {
+      width: 100%;
+      justify-content: center;
+    }
+    
+    /* Overlay */
+    .analysis-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgb(0 0 0 / 0.5);
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+      z-index: 999;
+    }
+    
+    .analysis-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+    
+    /* Utility Classes */
+    .hidden {
+      display: none !important;
+    }
+    
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">CI Extractor</div>
+        <div class="sidebar-subtitle">Competitive Intelligence</div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">Main</div>
+          <div class="nav-item active" data-page="analyses">
+            <svg class="nav-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            Saved Analyses
+          </div>
+          <div class="nav-item" data-page="settings">
+            <svg class="nav-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            Settings
+          </div>
+        </div>
+        
+        <div class="nav-section">
+          <div class="nav-section-title">Analytics</div>
+          <div class="nav-item" data-page="usage">
+            <svg class="nav-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
+            Usage Stats
+          </div>
+        </div>
+      </nav>
+    </div>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Analyses Page -->
+      <div id="analyses-page" class="page">
+        <div class="content-header">
+          <h1 class="page-title">Saved Analyses</h1>
+          <p class="page-description">Manage and review your competitive intelligence reports</p>
+        </div>
+        
+        <div class="content-body">
+          <!-- Stats -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Total Analyses</div>
+              <div class="stat-value" id="totalAnalyses">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Feature Reports</div>
+              <div class="stat-value" id="featureReports">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Pricing Reports</div>
+              <div class="stat-value" id="pricingReports">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">This Month</div>
+              <div class="stat-value" id="thisMonth">0</div>
+            </div>
+          </div>
+          
+          <!-- Toolbar -->
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <label for="typeFilter" class="label sr-only">Filter by type</label>
+              <select id="typeFilter" class="select" style="width: auto;">
+                <option value="all">All Types</option>
+                <option value="feature">Feature Analysis</option>
+                <option value="pricing">Pricing Analysis</option>
+              </select>
+            </div>
+            <div class="toolbar-right">
+              <button id="exportAllBtn" class="btn btn-secondary btn-sm">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Export All
+              </button>
+              <button id="clearAllBtn" class="btn btn-destructive btn-sm">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+                Clear All
+              </button>
+            </div>
+          </div>
+          
+          <!-- Analyses Grid -->
+          <div id="analysesContainer" class="analysis-grid">
+            <div id="noAnalyses" class="empty-state">
+              <svg class="empty-state-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+              <h3>No analyses saved yet</h3>
+              <p>Run an analysis and click "Save Analysis" to store it here.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Settings Page -->
+      <div id="settings-page" class="page hidden">
+        <div class="content-header">
+          <h1 class="page-title">Settings</h1>
+          <p class="page-description">Configure your API keys and preferences</p>
+        </div>
+        
+        <div class="content-body">
+          <!-- API Key Management -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">API Key Management</h2>
+              <p class="card-description">Configure your OpenAI API credentials</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="apiKeyInput" class="label">OpenAI API Key</label>
+              <input type="password" id="apiKeyInput" class="input" placeholder="Enter your OpenAI API Key">
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+              <button id="saveKeyBtn" class="btn btn-primary">Save API Key</button>
+              <button id="showKeyBtn" class="btn btn-secondary">Show/Hide Key</button>
+            </div>
+            
+            <div id="apiKeyDisplay" class="hidden" style="background: hsl(var(--muted)); padding: 12px; border-radius: var(--radius); border: 1px solid hsl(var(--border));">
+              <p style="color: hsl(var(--muted-foreground)); font-size: 14px;">Your API key: <span id="apiKeyText" style="font-family: monospace;"></span></p>
+            </div>
+            
+            <div id="status" class="hidden" style="margin-top: 12px; padding: 12px; border-radius: var(--radius);"></div>
+          </div>
+          
+          <!-- Model Settings -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Model Configuration</h2>
+              <p class="card-description">Choose which AI models to use for analysis</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="initialModelSelect" class="label">Initial Analysis Model</label>
+              <select id="initialModelSelect" class="select">
+                <option value="gpt-4o-mini">GPT-4o-mini (Fast & Cost-effective)</option>
+                <option value="gpt-4o">GPT-4o (Higher Quality, More Expensive)</option>
+                <option value="o3-mini">o3-mini (Advanced Reasoning, Cost-effective)</option>
+                <option value="o3">o3 (Most Advanced & Powerful, Premium)</option>
+              </select>
+              <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">Model used for initial feature extraction and pricing analysis.</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="deepModelSelect" class="label">Deep Analysis Model</label>
+              <select id="deepModelSelect" class="select">
+                <option value="o3-mini">o3-mini (Advanced Reasoning, Cost-effective)</option>
+                <option value="o3">o3 (Most Advanced & Powerful, Premium)</option>
+              </select>
+              <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">Model used for strategic deeper analysis ("Think More" feature).</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="companyContext" class="label">Your Company Context (Optional)</label>
+              <textarea id="companyContext" class="textarea" placeholder="Add information about your own company, product features, or specific areas to focus on during analysis..."></textarea>
+              <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">This context will be used to provide more relevant competitive analysis.</p>
+            </div>
+            
+            <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Usage Stats Page -->
+      <div id="usage-page" class="page hidden">
+        <div class="content-header">
+          <h1 class="page-title">Usage Statistics</h1>
+          <p class="page-description">Monitor your API usage and activity</p>
+        </div>
+        
+        <div class="content-body">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">API Calls Today</div>
+              <div class="stat-value" id="apiCallsToday">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Total API Calls</div>
+              <div class="stat-value" id="apiCallsTotal">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Last Used</div>
+              <div class="stat-value" id="lastUsed" style="font-size: 16px;">Never</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Analysis Sidebar -->
+  <div class="analysis-overlay" id="analysisOverlay"></div>
+  <div class="analysis-sidebar" id="analysisSidebar">
+    <div class="analysis-sidebar-header">
+      <button class="analysis-sidebar-close" id="closeSidebar">
+        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+      <div class="analysis-sidebar-title" id="sidebarTitle"></div>
+      <div class="analysis-sidebar-meta" id="sidebarMeta"></div>
+    </div>
+    
+    <div class="analysis-sidebar-content">
+      <div class="analysis-sidebar-text" id="sidebarContent"></div>
+    </div>
+    
+    <div class="analysis-sidebar-actions">
+      <button class="btn btn-secondary" id="sidebarCopyBtn">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 8px;">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+        </svg>
+        Copy Analysis
+      </button>
+    </div>
+  </div>
+
+  <script src="dashboard-new.js"></script>
+</body>
+</html>

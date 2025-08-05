@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const status = document.getElementById('status');
   const results = document.getElementById('results');
   const copyBtn = document.getElementById('copyBtn');
+  const saveBtn = document.getElementById('saveBtn');
   const settingsBtn = document.getElementById('settingsBtn');
   const thinkMoreSection = document.getElementById('thinkMoreSection');
   const thinkMoreBtn = document.getElementById('thinkMoreBtn');
@@ -17,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   extractBtn.addEventListener('click', extractFeatures);
   copyBtn.addEventListener('click', copyToClipboard);
+  saveBtn.addEventListener('click', saveAnalysis);
   settingsBtn.addEventListener('click', openDashboard);
   thinkMoreBtn.addEventListener('click', performDeeperAnalysis);
   
@@ -72,6 +74,7 @@ document.addEventListener('DOMContentLoaded', function () {
     results.textContent = features;
     results.style.display = 'block';
     copyBtn.style.display = 'block';
+    saveBtn.style.display = 'block';
     thinkMoreSection.style.display = 'block';
   }
 
@@ -82,6 +85,51 @@ document.addEventListener('DOMContentLoaded', function () {
         copyBtn.textContent = 'Copy to Clipboard';
       }, 2000);
     });
+  }
+
+  async function saveAnalysis() {
+    try {
+      if (!currentAnalysis || !currentPageData) {
+        showStatus('No analysis to save', 'error');
+        return;
+      }
+
+      // Create analysis object
+      const analysisData = {
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+        url: currentPageData.url,
+        title: currentPageData.title,
+        content: currentAnalysis,
+        domain: new URL(currentPageData.url).hostname,
+        type: currentAnalysis.includes('PRICING ANALYSIS') ? 'pricing' : 'feature'
+      };
+
+      // Get existing analyses
+      const result = await chrome.storage.sync.get(['saved_analyses']);
+      const savedAnalyses = result.saved_analyses || [];
+
+      // Add new analysis to the beginning of the array
+      savedAnalyses.unshift(analysisData);
+
+      // Keep only the last 50 analyses to avoid storage limits
+      const limitedAnalyses = savedAnalyses.slice(0, 50);
+
+      // Save back to storage
+      await chrome.storage.sync.set({ saved_analyses: limitedAnalyses });
+
+      // Update button and show success
+      saveBtn.textContent = 'Saved!';
+      showStatus('Analysis saved successfully', 'success');
+      
+      setTimeout(() => {
+        saveBtn.textContent = 'Save Analysis';
+      }, 2000);
+
+    } catch (error) {
+      console.error('Error saving analysis:', error);
+      showStatus('Error saving analysis: ' + error.message, 'error');
+    }
   }
 
   // Real AI processing with OpenAI
