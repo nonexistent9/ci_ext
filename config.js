@@ -184,3 +184,297 @@ async function supabaseSendMagicLink(email, redirectUrl) {
   }
   return true;
 }
+
+// -------- Analysis Storage Functions --------
+
+// Save analysis to Supabase database
+async function saveAnalysisToSupabase(analysisData) {
+  const cfg = await getSupabaseConfig();
+  const session = await getSupabaseSession();
+  
+  if (!cfg.url || !cfg.anonKey) {
+    throw new Error('Supabase not configured');
+  }
+  
+  if (!session?.access_token) {
+    throw new Error('User not authenticated');
+  }
+
+  // Get current user to ensure we have user_id
+  const userResponse = await supabaseGetUser();
+  if (!userResponse.data) {
+    throw new Error('Unable to get current user');
+  }
+
+  // Prepare analysis data for database
+  const analysis = {
+    user_id: userResponse.data.id,
+    title: analysisData.title || analysisData.pageData?.title || 'Untitled Analysis',
+    url: analysisData.url || analysisData.pageData?.url,
+    domain: analysisData.domain || extractDomainFromUrl(analysisData.url || analysisData.pageData?.url),
+    analysis_type: determineAnalysisType(analysisData.report || analysisData.content),
+    content: analysisData.report || analysisData.content,
+    page_data: analysisData.pageData,
+    model_used: analysisData.model_used || await getInitialModel(),
+    token_count: estimateTokenCount(analysisData.report || analysisData.content),
+    tags: analysisData.tags || [],
+    category: analysisData.category || null,
+    is_favorite: analysisData.is_favorite || false
+  };
+
+  const token = session.access_token;
+  const res = await fetch(`${cfg.url}/rest/v1/analyses`, {
+    method: 'POST',
+    headers: {
+      apikey: cfg.anonKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(analysis)
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to save analysis: ${res.status} ${error}`);
+  }
+
+  return await res.json();
+}
+
+// Retrieve user's analyses from Supabase
+async function getUserAnalyses(options = {}) {
+  const cfg = await getSupabaseConfig();
+  const session = await getSupabaseSession();
+  
+  if (!cfg.url || !cfg.anonKey || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+
+  // Build query parameters
+  const queryParams = new URLSearchParams();
+  
+  // Ordering
+  if (options.orderBy) {
+    queryParams.append('order', `${options.orderBy}.${options.order || 'desc'}`);
+  } else {
+    queryParams.append('order', 'created_at.desc');
+  }
+  
+  // Limit
+  if (options.limit) {
+    queryParams.append('limit', options.limit);
+  }
+  
+  // Filtering
+  if (options.domain) {
+    queryParams.append('domain', `eq.${options.domain}`);
+  }
+  
+  if (options.analysis_type) {
+    queryParams.append('analysis_type', `eq.${options.analysis_type}`);
+  }
+  
+  if (options.is_favorite) {
+    queryParams.append('is_favorite', `eq.true`);
+  }
+  
+  // Search in title or content
+  if (options.search) {
+    queryParams.append('or', `title.ilike.%${options.search}%,content.ilike.%${options.search}%`);
+  }
+
+  const token = session.access_token;
+  const url = `${cfg.url}/rest/v1/analyses?${queryParams.toString()}`;
+  
+  const res = await fetch(url, {
+    headers: {
+      apikey: cfg.anonKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to retrieve analyses: ${res.status} ${error}`);
+  }
+
+  return await res.json();
+}
+
+// Get single analysis by ID
+async function getAnalysisById(id) {
+  const cfg = await getSupabaseConfig();
+  const session = await getSupabaseSession();
+  
+  if (!cfg.url || !cfg.anonKey || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+
+  const token = session.access_token;
+  const res = await fetch(`${cfg.url}/rest/v1/analyses?id=eq.${id}`, {
+    headers: {
+      apikey: cfg.anonKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to retrieve analysis: ${res.status} ${error}`);
+  }
+
+  const results = await res.json();
+  return results.length > 0 ? results[0] : null;
+}
+
+// Update analysis (for tags, category, favorite status, etc.)
+async function updateAnalysis(id, updates) {
+  const cfg = await getSupabaseConfig();
+  const session = await getSupabaseSession();
+  
+  if (!cfg.url || !cfg.anonKey || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+
+  // Only allow certain fields to be updated
+  const allowedUpdates = {
+    tags: updates.tags,
+    category: updates.category,
+    is_favorite: updates.is_favorite
+  };
+
+  // Remove undefined values
+  const cleanUpdates = Object.fromEntries(
+    Object.entries(allowedUpdates).filter(([_, value]) => value !== undefined)
+  );
+
+  if (Object.keys(cleanUpdates).length === 0) {
+    throw new Error('No valid updates provided');
+  }
+
+  const token = session.access_token;
+  const res = await fetch(`${cfg.url}/rest/v1/analyses?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: cfg.anonKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(cleanUpdates)
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to update analysis: ${res.status} ${error}`);
+  }
+
+  return await res.json();
+}
+
+// Delete analysis
+async function deleteAnalysis(id) {
+  const cfg = await getSupabaseConfig();
+  const session = await getSupabaseSession();
+  
+  if (!cfg.url || !cfg.anonKey || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+
+  const token = session.access_token;
+  const res = await fetch(`${cfg.url}/rest/v1/analyses?id=eq.${id}`, {
+    method: 'DELETE',
+    headers: {
+      apikey: cfg.anonKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to delete analysis: ${res.status} ${error}`);
+  }
+
+  return true;
+}
+
+// Get user's analysis summary/stats
+async function getUserAnalysisStats() {
+  const cfg = await getSupabaseConfig();
+  const session = await getSupabaseSession();
+  
+  if (!cfg.url || !cfg.anonKey || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+
+  const token = session.access_token;
+  const res = await fetch(`${cfg.url}/rest/v1/user_analysis_summary`, {
+    headers: {
+      apikey: cfg.anonKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to retrieve stats: ${res.status} ${error}`);
+  }
+
+  const results = await res.json();
+  return results.length > 0 ? results[0] : null;
+}
+
+// Helper functions
+function extractDomainFromUrl(url) {
+  if (!url) return null;
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+function determineAnalysisType(content) {
+  if (!content) return 'general';
+  
+  const contentLower = content.toLowerCase();
+  
+  // Check for pricing indicators
+  if (contentLower.includes('pricing') || 
+      contentLower.includes('plan') && contentLower.includes('price') ||
+      contentLower.includes('subscription') ||
+      contentLower.includes('billing')) {
+    return 'pricing_analysis';
+  }
+  
+  // Check for feature indicators
+  if (contentLower.includes('feature') || 
+      contentLower.includes('capability') ||
+      contentLower.includes('functionality')) {
+    return 'feature_extraction';
+  }
+  
+  return 'general';
+}
+
+function estimateTokenCount(text) {
+  if (!text) return 0;
+  // Rough estimation: 4 characters per token on average
+  return Math.ceil(text.length / 4);
+}
+
+// Get initial model setting
+async function getInitialModel() {
+  try {
+    const result = await chrome?.storage?.sync.get(['initial_model']);
+    return result?.initial_model || CONFIG.DEFAULT_MODEL;
+  } catch (e) {
+    return CONFIG.DEFAULT_MODEL;
+  }
+}

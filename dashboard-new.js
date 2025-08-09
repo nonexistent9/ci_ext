@@ -266,6 +266,25 @@ document.addEventListener('DOMContentLoaded', function() {
   // Analyses management
   async function loadSavedAnalyses() {
     try {
+      // First try to load from Supabase
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          { type: 'getUserAnalyses', options: { limit: 50, orderBy: 'created_at', order: 'desc' } },
+          resolve
+        );
+      });
+      
+      if (response.success && response.result.length > 0) {
+        // Display Supabase analyses
+        displaySupabaseAnalyses(response.result);
+        return;
+      }
+    } catch (error) {
+      console.warn('Could not load from Supabase:', error);
+    }
+    
+    // Fallback to local storage
+    try {
       const result = await chrome.storage.sync.get(['saved_analyses']);
       const savedAnalyses = result.saved_analyses || [];
       
@@ -570,6 +589,31 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
   
+  function displaySupabaseAnalyses(analyses) {
+    analysesContainer.innerHTML = '';
+    
+    if (analyses.length === 0) {
+      analysesContainer.appendChild(noAnalyses);
+      return;
+    }
+    
+    analyses.forEach(analysis => {
+      const analysisElement = createSupabaseAnalysisElement(analysis);
+      analysesContainer.appendChild(analysisElement);
+    });
+    
+    // Update available documents for chat
+    availableDocuments = analyses.map(analysis => ({
+      id: analysis.id,
+      title: analysis.title,
+      domain: analysis.domain,
+      url: analysis.url,
+      content: analysis.content,
+      type: analysis.analysis_type,
+      timestamp: analysis.created_at
+    }));
+  }
+  
   function createAnalysisElement(analysis) {
     const div = document.createElement('div');
     div.className = 'analysis-card';
@@ -635,6 +679,84 @@ document.addEventListener('DOMContentLoaded', function() {
     return div;
   }
   
+  function createSupabaseAnalysisElement(analysis) {
+    const div = document.createElement('div');
+    div.className = 'analysis-card';
+    div.dataset.type = analysis.analysis_type;
+    div.dataset.analysisId = analysis.id;
+    div.dataset.source = 'supabase';
+    
+    const date = new Date(analysis.created_at).toLocaleString();
+    const domain = analysis.domain;
+    
+    // Escape HTML content to prevent XSS
+    const escapeHtml = (text) => {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    };
+    
+    const badgeClass = analysis.analysis_type === 'pricing_analysis' ? 'badge-pricing' : 
+                      analysis.analysis_type === 'feature_extraction' ? 'badge-feature' : 'badge-general';
+    
+    const typeDisplay = analysis.analysis_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
+    div.innerHTML = `
+      <div class="analysis-card-header">
+        <div class="analysis-title">${escapeHtml(analysis.title)}</div>
+        <div class="analysis-badge ${badgeClass}">${typeDisplay}</div>
+      </div>
+      <div class="analysis-meta">
+        <span>${escapeHtml(domain)}</span>
+        <span>•</span>
+        <span>${date}</span>
+        ${analysis.is_favorite ? '<span>•</span><span style="color: gold;">★ Favorite</span>' : ''}
+        ${analysis.tags && analysis.tags.length > 0 ? `<span>•</span><span>${analysis.tags.slice(0, 2).join(', ')}</span>` : ''}
+      </div>
+      <div class="analysis-actions">
+        <button class="btn btn-secondary btn-sm" data-action="view">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+          </svg>
+          View
+        </button>
+        <button class="btn btn-secondary btn-sm" data-action="copy">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+          </svg>
+          Copy
+        </button>
+        <button class="btn btn-secondary btn-sm" data-action="favorite" title="${analysis.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
+          ${analysis.is_favorite ? '★' : '☆'}
+        </button>
+        <button class="btn btn-destructive btn-sm" data-action="delete">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+          </svg>
+          Delete
+        </button>
+      </div>
+    `;
+    
+    div.id = 'analysis-' + analysis.id;
+    
+    // Store full analysis data on the element for sidebar access
+    div._analysisData = {
+      id: analysis.id,
+      title: analysis.title,
+      content: analysis.content,
+      url: analysis.url,
+      domain: analysis.domain,
+      timestamp: analysis.created_at,
+      type: analysis.analysis_type,
+      is_favorite: analysis.is_favorite,
+      tags: analysis.tags || []
+    };
+    
+    return div;
+  }
+  
   // Handle analysis actions
   function handleAnalysisAction(event) {
     const button = event.target.closest('button[data-action]');
@@ -651,8 +773,15 @@ document.addEventListener('DOMContentLoaded', function() {
       case 'copy':
         copyAnalysisToClipboard(analysisData, button);
         break;
+      case 'favorite':
+        toggleFavoriteAnalysis(analysisData.id, !analysisData.is_favorite, analysisItem);
+        break;
       case 'delete':
-        deleteAnalysis(analysisData.id);
+        if (analysisItem.dataset.source === 'supabase') {
+          deleteSupabaseAnalysis(analysisData.id);
+        } else {
+          deleteAnalysis(analysisData.id);
+        }
         break;
     }
   }
@@ -741,6 +870,71 @@ document.addEventListener('DOMContentLoaded', function() {
       showStatusMessage('Analysis deleted', 'success');
     } catch (error) {
       showStatusMessage('Error deleting analysis: ' + error.message, 'error');
+    }
+  }
+  
+  async function deleteSupabaseAnalysis(analysisId) {
+    if (!confirm('Are you sure you want to delete this analysis from your Supabase database?')) {
+      return;
+    }
+    
+    try {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          { type: 'deleteAnalysis', id: analysisId },
+          resolve
+        );
+      });
+      
+      if (response.success) {
+        loadSavedAnalyses();
+        showStatusMessage('Analysis deleted from database', 'success');
+      } else {
+        showStatusMessage('Error deleting analysis: ' + (response.error || 'Unknown error'), 'error');
+      }
+    } catch (error) {
+      showStatusMessage('Error deleting analysis: ' + error.message, 'error');
+    }
+  }
+  
+  async function toggleFavoriteAnalysis(analysisId, newFavoriteState, analysisElement) {
+    try {
+      // Update via background script (this would need to be implemented)
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          { 
+            type: 'updateAnalysis', 
+            id: analysisId, 
+            updates: { is_favorite: newFavoriteState } 
+          },
+          resolve
+        );
+      });
+      
+      if (response && response.success) {
+        // Update the UI immediately
+        const favoriteBtn = analysisElement.querySelector('button[data-action="favorite"]');
+        favoriteBtn.textContent = newFavoriteState ? '★' : '☆';
+        favoriteBtn.title = newFavoriteState ? 'Remove from favorites' : 'Add to favorites';
+        
+        // Update stored data
+        analysisElement._analysisData.is_favorite = newFavoriteState;
+        
+        // Update meta display
+        const metaElement = analysisElement.querySelector('.analysis-meta');
+        const currentMeta = metaElement.innerHTML;
+        if (newFavoriteState && !currentMeta.includes('★ Favorite')) {
+          metaElement.innerHTML = currentMeta.replace('</span>', '</span><span>•</span><span style="color: gold;">★ Favorite</span>');
+        } else if (!newFavoriteState) {
+          metaElement.innerHTML = currentMeta.replace('<span>•</span><span style="color: gold;">★ Favorite</span>', '');
+        }
+        
+        showStatusMessage(`Analysis ${newFavoriteState ? 'added to' : 'removed from'} favorites`, 'success');
+      } else {
+        showStatusMessage('Error updating favorite status: ' + (response?.error || 'Unknown error'), 'error');
+      }
+    } catch (error) {
+      showStatusMessage('Error updating favorite status: ' + error.message, 'error');
     }
   }
   

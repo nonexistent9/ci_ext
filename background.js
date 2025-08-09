@@ -88,6 +88,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => sendResponse({ success: false, error: error?.message || 'Unknown DB error' }));
     return true;
   }
+  
+  if (message?.type === 'getUserAnalyses') {
+    getUserAnalysesBackground(message.options || {})
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to get analyses' }));
+    return true;
+  }
+  
+  if (message?.type === 'saveAnalysis') {
+    saveAnalysisToSupabaseBackground(message.analysisData)
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to save analysis' }));
+    return true;
+  }
+  
+  if (message?.type === 'updateAnalysis') {
+    updateAnalysisBackground(message.id, message.updates)
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to update analysis' }));
+    return true;
+  }
+  
+  if (message?.type === 'deleteAnalysis') {
+    deleteAnalysisBackground(message.id)
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to delete analysis' }));
+    return true;
+  }
 
 });
 
@@ -264,6 +292,32 @@ async function startBackgroundAnalysis(payload) {
     report,
   };
   await chrome.storage.local.set({ last_analysis: record });
+
+  // Auto-save to Supabase if user is authenticated
+  try {
+    const session = await chrome.storage.local.get('session');
+    if (session?.session?.access_token) {
+      const analysisData = {
+        pageData,
+        report,
+        url: pageData.url,
+        model_used: modelName
+      };
+      
+      const savedAnalysis = await saveAnalysisToSupabaseBackground(analysisData);
+      
+      if (savedAnalysis) {
+        console.log('Analysis auto-saved to Supabase:', savedAnalysis[0]?.id);
+        chrome.runtime.sendMessage({ 
+          type: 'analysisSaved', 
+          jobId, 
+          supabaseId: savedAnalysis[0]?.id 
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('Auto-save to Supabase failed:', error.message);
+  }
 
   chrome.runtime.sendMessage({ type: 'analysisComplete', jobId, pageData, report });
 
@@ -709,6 +763,242 @@ function buildPreferencesSection(preferences) {
   
   return section;
 }
+
+// -------- Supabase Integration Functions --------
+
+// Save analysis to Supabase from background script
+async function saveAnalysisToSupabaseBackground(analysisData) {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const { session } = await chrome.storage.local.get('session');
+  
+  if (!supabase_url || !supabase_anon_key) {
+    throw new Error('Supabase not configured');
+  }
+  
+  if (!session?.access_token) {
+    throw new Error('User not authenticated');
+  }
+
+  // Get current user
+  const userRes = await fetch(`${supabase_url}/auth/v1/user`, {
+    headers: {
+      'apikey': supabase_anon_key,
+      'Authorization': `Bearer ${session.access_token}`
+    }
+  });
+  
+  if (!userRes.ok) {
+    throw new Error('Unable to get current user');
+  }
+  
+  const user = await userRes.json();
+
+  // Prepare analysis data for database
+  const analysis = {
+    user_id: user.id,
+    title: analysisData.title || analysisData.pageData?.title || 'Untitled Analysis',
+    url: analysisData.url || analysisData.pageData?.url,
+    domain: extractDomainFromUrl(analysisData.url || analysisData.pageData?.url),
+    analysis_type: determineAnalysisType(analysisData.report || analysisData.content),
+    content: analysisData.report || analysisData.content,
+    page_data: analysisData.pageData,
+    model_used: analysisData.model_used || await getInitialModel('gpt-4o-mini'),
+    token_count: estimateTokenCount(analysisData.report || analysisData.content),
+    tags: analysisData.tags || [],
+    category: analysisData.category || null,
+    is_favorite: analysisData.is_favorite || false
+  };
+
+  const res = await fetch(`${supabase_url}/rest/v1/analyses`, {
+    method: 'POST',
+    headers: {
+      'apikey': supabase_anon_key,
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(analysis)
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to save analysis: ${res.status} ${error}`);
+  }
+
+  return await res.json();
+}
+
+// Retrieve user's analyses from Supabase in background
+async function getUserAnalysesBackground(options = {}) {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const { session } = await chrome.storage.local.get('session');
+  
+  if (!supabase_url || !supabase_anon_key || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+
+  // Build query parameters
+  const queryParams = new URLSearchParams();
+  
+  // Ordering
+  if (options.orderBy) {
+    queryParams.append('order', `${options.orderBy}.${options.order || 'desc'}`);
+  } else {
+    queryParams.append('order', 'created_at.desc');
+  }
+  
+  // Limit
+  if (options.limit) {
+    queryParams.append('limit', options.limit);
+  }
+  
+  // Filtering
+  if (options.domain) {
+    queryParams.append('domain', `eq.${options.domain}`);
+  }
+  
+  if (options.analysis_type) {
+    queryParams.append('analysis_type', `eq.${options.analysis_type}`);
+  }
+  
+  if (options.is_favorite) {
+    queryParams.append('is_favorite', `eq.true`);
+  }
+  
+  // Search in title or content
+  if (options.search) {
+    queryParams.append('or', `title.ilike.%${options.search}%,content.ilike.%${options.search}%`);
+  }
+
+  const url = `${supabase_url}/rest/v1/analyses?${queryParams.toString()}`;
+  
+  const res = await fetch(url, {
+    headers: {
+      'apikey': supabase_anon_key,
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to retrieve analyses: ${res.status} ${error}`);
+  }
+
+  return await res.json();
+}
+
+// Update analysis in Supabase from background
+async function updateAnalysisBackground(id, updates) {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const { session } = await chrome.storage.local.get('session');
+  
+  if (!supabase_url || !supabase_anon_key || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+
+  // Only allow certain fields to be updated
+  const allowedUpdates = {
+    tags: updates.tags,
+    category: updates.category,
+    is_favorite: updates.is_favorite
+  };
+
+  // Remove undefined values
+  const cleanUpdates = Object.fromEntries(
+    Object.entries(allowedUpdates).filter(([_, value]) => value !== undefined)
+  );
+
+  if (Object.keys(cleanUpdates).length === 0) {
+    throw new Error('No valid updates provided');
+  }
+
+  const res = await fetch(`${supabase_url}/rest/v1/analyses?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': supabase_anon_key,
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(cleanUpdates)
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to update analysis: ${res.status} ${error}`);
+  }
+
+  return await res.json();
+}
+
+// Delete analysis from Supabase in background
+async function deleteAnalysisBackground(id) {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const { session } = await chrome.storage.local.get('session');
+  
+  if (!supabase_url || !supabase_anon_key || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+
+  const res = await fetch(`${supabase_url}/rest/v1/analyses?id=eq.${id}`, {
+    method: 'DELETE',
+    headers: {
+      'apikey': supabase_anon_key,
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to delete analysis: ${res.status} ${error}`);
+  }
+
+  return true;
+}
+
+// Helper functions for background script
+function extractDomainFromUrl(url) {
+  if (!url) return null;
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+function determineAnalysisType(content) {
+  if (!content) return 'general';
+  
+  const contentLower = content.toLowerCase();
+  
+  // Check for pricing indicators
+  if (contentLower.includes('pricing') || 
+      contentLower.includes('plan') && contentLower.includes('price') ||
+      contentLower.includes('subscription') ||
+      contentLower.includes('billing')) {
+    return 'pricing_analysis';
+  }
+  
+  // Check for feature indicators
+  if (contentLower.includes('feature') || 
+      contentLower.includes('capability') ||
+      contentLower.includes('functionality')) {
+    return 'feature_extraction';
+  }
+  
+  return 'general';
+}
+
+function estimateTokenCount(text) {
+  if (!text) return 0;
+  // Rough estimation: 4 characters per token on average
+  return Math.ceil(text.length / 4);
+}
+
+// -------- End Supabase Functions --------
 
 // This function executes in the page context via chrome.scripting.executeScript
 function extractPageContent() {
