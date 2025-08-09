@@ -21,6 +21,62 @@ document.addEventListener('DOMContentLoaded', function () {
   saveBtn.addEventListener('click', saveAnalysis);
   settingsBtn.addEventListener('click', openDashboard);
   thinkMoreBtn.addEventListener('click', performDeeperAnalysis);
+
+  // Recover any in-progress or last results when popup opens
+  (async () => {
+    try {
+      const [{ current_job, last_analysis }, [tab]] = await Promise.all([
+        chrome.storage.local.get(['current_job', 'last_analysis']),
+        chrome.tabs.query({ active: true, currentWindow: true })
+      ]);
+
+      if (current_job && current_job.jobId) {
+        showStatus('Analysis running in background...', 'loading');
+        const onMessage = (message) => {
+          if (!message || message.jobId !== current_job.jobId) return;
+          if (message.type === 'analysisProgress') showStatus(message.message, 'loading');
+          if (message.type === 'analysisComplete') {
+            currentPageData = message.pageData;
+            displayResults(message.report);
+            showStatus('Analysis completed successfully!', 'success');
+            chrome.storage.local.remove('current_job');
+            chrome.runtime.onMessage.removeListener(onMessage);
+            extractBtn.disabled = false;
+          }
+          if (message.type === 'analysisError') {
+            showStatus('Error: ' + message.error, 'error');
+            chrome.storage.local.remove('current_job');
+            chrome.runtime.onMessage.removeListener(onMessage);
+            extractBtn.disabled = false;
+          }
+          if (message.type === 'deepAnalysisComplete') {
+            displayResults(message.report);
+            showStatus('Deeper analysis completed!', 'success');
+            chrome.storage.local.remove('current_job');
+            chrome.runtime.onMessage.removeListener(onMessage);
+            thinkMoreBtn.disabled = false;
+          }
+          if (message.type === 'deepAnalysisError') {
+            showStatus('Error: ' + message.error, 'error');
+            chrome.storage.local.remove('current_job');
+            chrome.runtime.onMessage.removeListener(onMessage);
+            thinkMoreBtn.disabled = false;
+          }
+        };
+        chrome.runtime.onMessage.addListener(onMessage);
+        extractBtn.disabled = true;
+      } else if (last_analysis && last_analysis.report) {
+        // Only auto-show if it matches current tab URL
+        if (tab && last_analysis.pageData && last_analysis.pageData.url === tab.url) {
+          currentPageData = last_analysis.pageData;
+          displayResults(last_analysis.report);
+          showStatus('Loaded last completed analysis for this page.', 'success');
+        }
+      }
+    } catch (e) {
+      // Ignore recovery issues
+    }
+  })();
   
   // Update the Think More button text when the popup is opened
   async function updateThinkMoreButtonText() {
@@ -31,34 +87,46 @@ document.addEventListener('DOMContentLoaded', function () {
   async function extractFeatures() {
     try {
       extractBtn.disabled = true;
-      showStatus('Analyzing page content...', 'loading');
+      showStatus('Starting analysis in background...', 'loading');
 
-      // Get current tab
+      const apiKey = await getStoredApiKey();
+      if (!apiKey) return; // getStoredApiKey already surfaced error + opened settings
+
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const jobId = `job_${Date.now()}`;
 
-      // Inject content script and extract page data
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: extractPageContent
-      });
+      // Persist job state so we can recover after popup closes
+      await chrome.storage.local.set({ current_job: { jobId, tabId: tab.id, startedAt: Date.now() } });
 
-      if (!result.result) {
-        throw new Error('Failed to extract page content');
-      }
+      // Subscribe to background progress and completion
+      const onMessage = (message) => {
+        if (!message || message.jobId !== jobId) return;
+        if (message.type === 'analysisProgress') {
+          showStatus(message.message, 'loading');
+        }
+        if (message.type === 'analysisComplete') {
+          currentPageData = message.pageData;
+          displayResults(message.report);
+          showStatus('Analysis completed successfully!', 'success');
+          chrome.storage.local.remove('current_job');
+          chrome.runtime.onMessage.removeListener(onMessage);
+          extractBtn.disabled = false;
+        }
+        if (message.type === 'analysisError') {
+          showStatus('Error: ' + message.error, 'error');
+          chrome.storage.local.remove('current_job');
+          chrome.runtime.onMessage.removeListener(onMessage);
+          extractBtn.disabled = false;
+        }
+      };
+      chrome.runtime.onMessage.addListener(onMessage);
 
-      const pageData = result.result;
-      currentPageData = pageData; // Store for deeper analysis
-
-      // Process with AI
-      const features = await processWithAI(pageData);
-
-      displayResults(features);
-      showStatus('Analysis completed successfully!', 'success');
+      // Kick off background analysis
+      chrome.runtime.sendMessage({ type: 'startAnalysis', jobId, tabId: tab.id });
 
     } catch (error) {
       console.error('Error:', error);
       showStatus('Error: ' + error.message, 'error');
-    } finally {
       extractBtn.disabled = false;
     }
   }
@@ -132,150 +200,55 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Real AI processing with OpenAI
-  async function processWithAI(pageData) {
-    const apiKey = await getStoredApiKey();
-    if (!apiKey) {
-      throw new Error('OpenAI API key not found. Please set your API key in the dashboard.');
-    }
-
-    // Update usage statistics
-    await updateUsageStats();
-
-    // Get company context if available
-    const companyContext = await getCompanyContext();
-    const companyContextSection = companyContext ?
-      `\nYOUR COMPANY CONTEXT (For Comparison):
-${companyContext}\n` : '';
-
-    // Determine if this is a pricing page
-    const isPricingPage = pageData.url.toLowerCase().includes('pricing') ||
-      pageData.title.toLowerCase().includes('pricing') ||
-      pageData.textContent.toLowerCase().includes('plan') && pageData.textContent.toLowerCase().includes('price');
-
-    let prompt;
-    if (isPricingPage) {
-      prompt = `Extract pricing information from this competitor's pricing page.
-
-PRICING PAGE ANALYSIS:
-Company: ${pageData.title}
-URL: ${pageData.url}${companyContextSection}
-
-PAGE CONTENT:
-${pageData.textContent.substring(0, 8000)}...
-
-Please provide a simple pricing analysis:
-
-1. PRICING PLANS (list each plan with key details)
-2. PRICING STRUCTURE (monthly/annual, per user, etc.)
-3. KEY FEATURES BY PLAN
-4. FREE TRIAL/FREEMIUM OPTIONS
-5. ENTERPRISE/CUSTOM PRICING${companyContext ? '\n6. PRICING COMPARISON WITH YOUR COMPANY' : ''}
-
-Keep it concise and focused on pricing details only.`;
-    } else {
-      prompt = `Extract the key features and capabilities from this competitor's website.
-
-FEATURE EXTRACTION:
-Company: ${pageData.title}
-URL: ${pageData.url}${companyContextSection}
-
-KEY PAGE ELEMENTS:
-Main Headings: ${pageData.headings.map(h => h.text || h).slice(0, 15).join(', ')}
-Call-to-Actions: ${pageData.buttons.slice(0, 10).join(', ')}
-
-PAGE CONTENT:
-${pageData.textContent.substring(0, 8000)}...
-
-Please provide a simple feature summary:
-
-1. CORE FEATURES (list main product features)
-2. KEY CAPABILITIES (what the product does)
-3. TARGET USERS (who it's for)
-4. INTEGRATIONS (if mentioned)
-5. UNIQUE SELLING POINTS${companyContext ? '\n6. FEATURE COMPARISON WITH YOUR COMPANY' : ''}
-
-Keep it simple and focused on features only. Avoid strategic analysis.`;
-    }
-
-    const model = await getInitialModel();
-    const requestBody = {
-      model: model,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a feature extraction specialist. Your job is to quickly identify and summarize the key features, capabilities, and pricing information from competitor websites. Be concise and factual. Avoid strategic analysis or deep insights - just extract the core information clearly.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
-    };
-
-    // Use appropriate parameters based on model
-    if (model.includes('o3')) {
-      requestBody.max_completion_tokens = 2000;
-    } else {
-      requestBody.max_tokens = 2000;
-      requestBody.temperature = 0.3;
-    }
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`OpenAI API Error: ${error.error?.message || 'Unknown error'}`);
-    }
-
-    const data = await response.json();
-    const analysis = data.choices[0].message.content;
-
-    const modelName = await getInitialModel();
-
-    const reportType = isPricingPage ? 'PRICING ANALYSIS' : 'FEATURE EXTRACTION';
-
-    return `📋 ${reportType} REPORT
-Generated: ${new Date().toLocaleString()}
-Source: ${pageData.url}
-
-${analysis}
-
----
-Powered by OpenAI ${modelName} | CI Feature Extractor
-💡 Use "Think More" for deeper strategic analysis`;
-  }
+  // Removed in-popup AI call; now handled by background
 
   // Deeper analysis with o3 models only
   async function performDeeperAnalysis() {
     try {
       thinkMoreBtn.disabled = true;
       const model = await getDeepModel();
-      showStatus(`Performing deeper analysis with ${model}...`, 'loading');
+      showStatus(`Starting deeper analysis with ${model} in background...`, 'loading');
 
       const apiKey = await getStoredApiKey();
-      if (!apiKey) {
-        throw new Error('OpenAI API key not found. Please enter your API key.');
-      }
+      if (!apiKey) return;
 
       const userPrompt = customPrompt.value.trim() || 'Provide deeper strategic insights and actionable recommendations based on this competitive analysis.';
 
-      const deeperAnalysis = await processWithO3Mini(currentAnalysis, currentPageData, userPrompt, apiKey);
+      const jobId = `deep_${Date.now()}`;
+      await chrome.storage.local.set({ current_job: { jobId, type: 'deep', startedAt: Date.now() } });
 
-      displayResults(deeperAnalysis);
-      showStatus('Deeper analysis completed!', 'success');
+      const onMessage = (message) => {
+        if (!message || message.jobId !== jobId) return;
+        if (message.type === 'analysisProgress') {
+          showStatus(message.message, 'loading');
+        }
+        if (message.type === 'deepAnalysisComplete') {
+          displayResults(message.report);
+          showStatus('Deeper analysis completed!', 'success');
+          chrome.storage.local.remove('current_job');
+          chrome.runtime.onMessage.removeListener(onMessage);
+          thinkMoreBtn.disabled = false;
+        }
+        if (message.type === 'deepAnalysisError') {
+          showStatus('Error: ' + message.error, 'error');
+          chrome.storage.local.remove('current_job');
+          chrome.runtime.onMessage.removeListener(onMessage);
+          thinkMoreBtn.disabled = false;
+        }
+      };
+      chrome.runtime.onMessage.addListener(onMessage);
+
+      chrome.runtime.sendMessage({
+        type: 'startDeepAnalysis',
+        jobId,
+        initialAnalysis: currentAnalysis,
+        pageData: currentPageData,
+        userPrompt
+      });
 
     } catch (error) {
       console.error('Error:', error);
       showStatus('Error: ' + error.message, 'error');
-    } finally {
       thinkMoreBtn.disabled = false;
     }
   }
@@ -433,79 +406,7 @@ Powered by OpenAI ${modelName} | Advanced CI Analysis`;
   */
 });
 
-// This function runs in the page context
-function extractPageContent() {
-  const data = {
-    title: document.title,
-    url: window.location.href,
-    htmlSource: document.documentElement.outerHTML,
-    textContent: document.body.innerText,
-    headings: [],
-    buttons: [],
-    forms: [],
-    links: [],
-    images: [],
-    metadata: {}
-  };
-
-  // Extract headings
-  const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
-  headings.forEach(h => {
-    const text = h.textContent.trim();
-    if (text && text.length < 200) {
-      data.headings.push({
-        level: h.tagName.toLowerCase(),
-        text: text
-      });
-    }
-  });
-
-  // Extract button text
-  const buttons = document.querySelectorAll('button, .btn, [role="button"], input[type="submit"], a[class*="btn"]');
-  buttons.forEach(btn => {
-    const text = btn.textContent.trim() || btn.value || btn.getAttribute('aria-label');
-    if (text && text.length < 100) {
-      data.buttons.push(text);
-    }
-  });
-
-  // Extract forms
-  const forms = document.querySelectorAll('form');
-  data.forms = Array.from(forms).map(form => ({
-    action: form.action,
-    method: form.method,
-    inputs: form.querySelectorAll('input').length
-  }));
-
-  // Extract navigation links
-  const navLinks = document.querySelectorAll('nav a, .nav a, .menu a, .navigation a');
-  navLinks.forEach(link => {
-    const text = link.textContent.trim();
-    if (text && text.length < 100) {
-      data.links.push(text);
-    }
-  });
-
-  // Extract images with alt text
-  const images = document.querySelectorAll('img[alt]');
-  images.forEach(img => {
-    if (img.alt && img.alt.length < 200) {
-      data.images.push(img.alt);
-    }
-  });
-
-  // Extract meta tags
-  const metaTags = document.querySelectorAll('meta[name], meta[property]');
-  metaTags.forEach(meta => {
-    const name = meta.getAttribute('name') || meta.getAttribute('property');
-    const content = meta.getAttribute('content');
-    if (name && content) {
-      data.metadata[name] = content;
-    }
-  });
-
-  return data;
-}
+// Removed page-context extractor from popup; background owns it
 
 // API Key management functions
 function openDashboard() {
