@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const copyBtn = document.getElementById('copyBtn');
   const saveBtn = document.getElementById('saveBtn');
   const settingsBtn = document.getElementById('settingsBtn');
+  const dashboardBtn = document.getElementById('dashboardBtn');
   // Store the initial analysis and page data
   let currentAnalysis = '';
   let currentPageData = null;
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function () {
   copyBtn.addEventListener('click', copyToClipboard);
   saveBtn.addEventListener('click', saveAnalysis);
   settingsBtn.addEventListener('click', openDashboard);
+  dashboardBtn.addEventListener('click', openDashboard);
 
   // Recover any in-progress or last results when popup opens
   (async () => {
@@ -133,6 +135,7 @@ document.addEventListener('DOMContentLoaded', function () {
     results.style.display = 'block';
     copyBtn.style.display = 'block';
     saveBtn.style.display = 'block';
+    dashboardBtn.style.display = 'block';
   }
 
   function copyToClipboard() {
