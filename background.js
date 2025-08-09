@@ -143,7 +143,10 @@ async function finishUserOAuth(url, tabId) {
   console.log('Handling Supabase OAuth callback...');
   try {
     const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
-    if (!supabase_url || !supabase_anon_key) throw new Error('Supabase not configured');
+    const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+    const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+    const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+    const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
 
     const u = new URL(url);
     const hash = (u.hash || '').replace(/^#/, '');
@@ -160,9 +163,9 @@ async function finishUserOAuth(url, tabId) {
 
     // Optionally fetch user to validate
     try {
-      const res = await fetch(`${supabase_url}/auth/v1/user`, {
+      const res = await fetch(`${effectiveUrl}/auth/v1/user`, {
         headers: {
-          'apikey': supabase_anon_key,
+          'apikey': effectiveAnon,
           'Authorization': `Bearer ${access_token}`
         }
       });
@@ -661,10 +664,13 @@ async function getStoredApiKey() {
 // Minimal DB insert via Supabase REST routed through background (avoids CORS in popup)
 async function supabaseDbInsert({ table, rows }) {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
-  if (!supabase_url || !supabase_anon_key) throw new Error('Supabase not configured');
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
   const { session } = await chrome.storage.local.get('session');
-  const token = session?.access_token || supabase_anon_key;
-  const res = await fetch(`${supabase_url}/rest/v1/${table}`, {
+  const token = session?.access_token || effectiveAnon;
+  const res = await fetch(`${effectiveUrl}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
       apikey: token,
@@ -769,9 +775,13 @@ function buildPreferencesSection(preferences) {
 // Save analysis to Supabase from background script
 async function saveAnalysisToSupabaseBackground(analysisData) {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
   const { session } = await chrome.storage.local.get('session');
   
-  if (!supabase_url || !supabase_anon_key) {
+  if (!effectiveUrl || !effectiveAnon) {
     throw new Error('Supabase not configured');
   }
   
@@ -780,9 +790,9 @@ async function saveAnalysisToSupabaseBackground(analysisData) {
   }
 
   // Get current user
-  const userRes = await fetch(`${supabase_url}/auth/v1/user`, {
+  const userRes = await fetch(`${effectiveUrl}/auth/v1/user`, {
     headers: {
-      'apikey': supabase_anon_key,
+      'apikey': effectiveAnon,
       'Authorization': `Bearer ${session.access_token}`
     }
   });
@@ -809,10 +819,10 @@ async function saveAnalysisToSupabaseBackground(analysisData) {
     is_favorite: analysisData.is_favorite || false
   };
 
-  const res = await fetch(`${supabase_url}/rest/v1/analyses`, {
+  const res = await fetch(`${effectiveUrl}/rest/v1/analyses`, {
     method: 'POST',
     headers: {
-      'apikey': supabase_anon_key,
+      'apikey': effectiveAnon,
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
@@ -831,9 +841,13 @@ async function saveAnalysisToSupabaseBackground(analysisData) {
 // Retrieve user's analyses from Supabase in background
 async function getUserAnalysesBackground(options = {}) {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
   const { session } = await chrome.storage.local.get('session');
   
-  if (!supabase_url || !supabase_anon_key || !session?.access_token) {
+  if (!effectiveUrl || !effectiveAnon || !session?.access_token) {
     throw new Error('Not authenticated or Supabase not configured');
   }
 
@@ -870,11 +884,11 @@ async function getUserAnalysesBackground(options = {}) {
     queryParams.append('or', `title.ilike.%${options.search}%,content.ilike.%${options.search}%`);
   }
 
-  const url = `${supabase_url}/rest/v1/analyses?${queryParams.toString()}`;
+  const url = `${effectiveUrl}/rest/v1/analyses?${queryParams.toString()}`;
   
   const res = await fetch(url, {
     headers: {
-      'apikey': supabase_anon_key,
+      'apikey': effectiveAnon,
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json'
     }
@@ -891,9 +905,13 @@ async function getUserAnalysesBackground(options = {}) {
 // Update analysis in Supabase from background
 async function updateAnalysisBackground(id, updates) {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
   const { session } = await chrome.storage.local.get('session');
   
-  if (!supabase_url || !supabase_anon_key || !session?.access_token) {
+  if (!effectiveUrl || !effectiveAnon || !session?.access_token) {
     throw new Error('Not authenticated or Supabase not configured');
   }
 
@@ -913,10 +931,10 @@ async function updateAnalysisBackground(id, updates) {
     throw new Error('No valid updates provided');
   }
 
-  const res = await fetch(`${supabase_url}/rest/v1/analyses?id=eq.${id}`, {
+  const res = await fetch(`${effectiveUrl}/rest/v1/analyses?id=eq.${id}`, {
     method: 'PATCH',
     headers: {
-      'apikey': supabase_anon_key,
+      'apikey': effectiveAnon,
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
@@ -935,16 +953,20 @@ async function updateAnalysisBackground(id, updates) {
 // Delete analysis from Supabase in background
 async function deleteAnalysisBackground(id) {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
   const { session } = await chrome.storage.local.get('session');
   
-  if (!supabase_url || !supabase_anon_key || !session?.access_token) {
+  if (!effectiveUrl || !effectiveAnon || !session?.access_token) {
     throw new Error('Not authenticated or Supabase not configured');
   }
 
-  const res = await fetch(`${supabase_url}/rest/v1/analyses?id=eq.${id}`, {
+  const res = await fetch(`${effectiveUrl}/rest/v1/analyses?id=eq.${id}`, {
     method: 'DELETE',
     headers: {
-      'apikey': supabase_anon_key,
+      'apikey': effectiveAnon,
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json'
     }

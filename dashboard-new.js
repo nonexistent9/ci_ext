@@ -8,9 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const status = document.getElementById('status');
   const initialModelSelect = document.getElementById('initialModelSelect');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-  const saveSupabaseBtn = document.getElementById('saveSupabaseBtn');
-  const supabaseUrlInput = document.getElementById('supabaseUrl');
-  const supabaseAnonKeyInput = document.getElementById('supabaseAnonKey');
+  // Removed Supabase settings UI
   const companyContext = document.getElementById('companyContext');
   const customPrompts = document.getElementById('customPrompts');
   const includeActionableInsights = document.getElementById('includeActionableInsights');
@@ -58,7 +56,7 @@ document.addEventListener('DOMContentLoaded', function() {
   saveKeyBtn.addEventListener('click', saveApiKey);
   showKeyBtn.addEventListener('click', toggleApiKeyDisplay);
   saveSettingsBtn.addEventListener('click', saveSettings);
-  saveSupabaseBtn.addEventListener('click', saveSupabaseSettings);
+  // Supabase settings removed
   analysesContainer.addEventListener('click', handleAnalysisAction);
   
   // Chat event listeners
@@ -167,21 +165,7 @@ document.addEventListener('DOMContentLoaded', function() {
     return key.substring(0, 3) + '...' + key.substring(key.length - 4);
   }
 
-  // Supabase settings
-  async function saveSupabaseSettings() {
-    const url = (supabaseUrlInput.value || '').trim();
-    const anon = (supabaseAnonKeyInput.value || '').trim();
-    if (!url || !anon) {
-      showStatusMessage('Please enter both Supabase URL and anon key', 'error');
-      return;
-    }
-    try {
-      await chrome.storage.sync.set({ supabase_url: url, supabase_anon_key: anon });
-      showStatusMessage('Supabase settings saved', 'success');
-    } catch (e) {
-      showStatusMessage('Error saving Supabase settings: ' + e.message, 'error');
-    }
-  }
+  // Supabase settings removed
   
   // Settings management
   async function saveSettings() {
