@@ -224,6 +224,10 @@ async function handleAiChat(payload) {
   const companyContext = await getCompanyContext();
   const customPrompts = await getCustomPrompts();
   const analysisPreferences = await getAnalysisPreferences();
+  
+  console.log('AI Chat Debug - Company Context:', companyContext);
+  console.log('AI Chat Debug - Custom Prompts:', customPrompts);
+  console.log('AI Chat Debug - Analysis Preferences:', analysisPreferences);
 
   // Build context from documents to analyze
   let documentContext = '';
@@ -267,20 +271,57 @@ async function handleAiChat(payload) {
     });
     
     documentContext += `\nIMPORTANT: Base your analysis ONLY on the content provided above. Reference specific details, quotes, or sections from these documents in your response.\n`;
+    
+    // Add company context to document analysis if available
+    if (companyContext) {
+      documentContext += `
+
+CRITICAL: YOUR COMPANY INFORMATION FOR COMPETITIVE ANALYSIS:
+${companyContext}
+
+INSTRUCTIONS: When analyzing the documents above, you MUST:
+1. Compare competitor features/pricing/strategies against YOUR company's offerings
+2. Identify specific advantages or gaps relative to YOUR company
+3. Provide recommendations tailored to YOUR company's context
+4. Reference YOUR company information directly in your analysis
+
+`;
+    }
+    
+    // Add custom analysis instructions if available
+    if (customPrompts) {
+      documentContext += `\nCUSTOM ANALYSIS INSTRUCTIONS:\n${customPrompts}\n`;
+    }
   } else {
     // No documents found or provided
     documentContext = '\n\nNOTE: No specific documents were referenced or found to be relevant to this query. Please provide general competitive intelligence guidance or ask the user to reference specific documents using @ mentions.\n';
   }
 
+  // Add company context to the beginning if available for maximum visibility
+  let companyContextSection = '';
+  if (companyContext) {
+    companyContextSection = `
+
+IMPORTANT - YOUR COMPANY CONTEXT:
+${companyContext}
+
+This is critical information about the user's company. Always consider this context when providing competitive analysis and comparisons. Reference this information directly in your responses when relevant.
+
+=====================================
+
+`;
+  }
+
   // Build enhanced system prompt with user preferences
-  let systemPrompt = `You are an expert competitive intelligence analyst with deep expertise in business strategy, market analysis, and competitive positioning. Your role is to analyze competitive intelligence data and provide actionable strategic insights.
+  let systemPrompt = `${companyContextSection}You are an expert competitive intelligence analyst with deep expertise in business strategy, market analysis, and competitive positioning. Your role is to analyze competitive intelligence data and provide actionable strategic insights.
 
 CORE RESPONSIBILITIES:
 - Extract and analyze key information from competitive intelligence reports
-- Compare competitors' strategies, features, pricing, and positioning
-- Identify market trends, opportunities, and threats
-- Provide specific, actionable strategic recommendations
+- Compare competitors' strategies, features, pricing, and positioning against the user's company context
+- Identify market trends, opportunities, and threats specific to the user's business
+- Provide specific, actionable strategic recommendations tailored to the user's company
 - Reference specific details from documents when available
+- Always relate findings back to the user's company when context is provided
 
 ANALYSIS APPROACH:
 - When documents are provided: Always ground responses in the specific data provided
@@ -289,6 +330,7 @@ ANALYSIS APPROACH:
 - If comparing multiple documents, clearly differentiate between them
 - If asked about something not in the provided documents, clearly state that
 - When no documents are available: Provide general competitive intelligence best practices and guidance
+- ALWAYS consider the user's company context in your analysis and recommendations
 
 RESPONSE STYLE:
 - Be direct and actionable
@@ -297,12 +339,14 @@ RESPONSE STYLE:
 - When no documents are available: Provide educational content about competitive intelligence methods
 - Always be honest about the availability of specific data
 - If no relevant information is found, suggest how the user can get better results
+- When user's company context is available: Always relate competitive insights back to their specific situation
 
 DOCUMENT HANDLING:
 - When documents are referenced with @[Document Name]: Focus exclusively on analyzing those specific documents
 - When no documents are referenced: Automatically search for relevant documents from the user's saved analyses
 - When no relevant documents exist: Provide general guidance and suggest ways to gather competitive intelligence
-- Always cite specific information from documents rather than making general statements when data is available.`;
+- Always cite specific information from documents rather than making general statements when data is available
+- Frame all competitive analysis in terms of implications for the user's company`;
 
   // Add user preferences to system prompt
   if (analysisPreferences) {
@@ -321,15 +365,12 @@ DOCUMENT HANDLING:
     }
   }
   
-  // Add company context if available
-  if (companyContext) {
-    systemPrompt += `\n\nUSER'S COMPANY CONTEXT:\n${companyContext}`;
-  }
-  
   // Add custom prompts if available
   if (customPrompts) {
     systemPrompt += `\n\nCUSTOM ANALYSIS INSTRUCTIONS:\n${customPrompts}`;
   }
+  
+  console.log('AI Chat Debug - Final System Prompt:', systemPrompt);
 
   // Build messages array with conversation history
   const messages = [
@@ -341,8 +382,24 @@ DOCUMENT HANDLING:
   messages.push(...recentHistory);
 
   // Add current message with document context if needed
-  const currentMessage = documentContext ? `${message}${documentContext}` : message;
+  let currentMessage = message;
+  if (documentContext) {
+    currentMessage += documentContext;
+  }
+  
+  // Add explicit company context reminder if available
+  if (companyContext && !documentContext.includes('CRITICAL: YOUR COMPANY INFORMATION')) {
+    currentMessage += `
+
+REMEMBER: My company context is: ${companyContext}
+
+Please relate your response to my specific company situation.`;
+  }
+  
   messages.push({ role: 'user', content: currentMessage });
+  
+  console.log('AI Chat Debug - Current Message:', currentMessage);
+  console.log('AI Chat Debug - Full Messages Array:', JSON.stringify(messages, null, 2));
 
   const model = await getInitialModel();
   const requestBody = {
