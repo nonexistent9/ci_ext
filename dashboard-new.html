@@ -361,36 +361,213 @@
       gap: 8px;
     }
     
-    /* Toolbar */
-    .toolbar {
+    
+    /* AI Chat */
+    .chat-section {
+      margin-bottom: 32px;
+    }
+    
+    .chat-header {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      margin-bottom: 24px;
-      padding: 16px 20px;
-      background-color: hsl(var(--card));
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid hsl(var(--border));
+    }
+    
+    .chat-header h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .chat-messages {
+      max-height: 500px;
+      overflow-y: auto;
+      padding: 16px;
+      background: hsl(var(--card));
       border: 1px solid hsl(var(--border));
       border-radius: var(--radius);
+      margin-bottom: 16px;
+      scroll-behavior: smooth;
     }
     
-    .toolbar-left {
+    .welcome-message {
+      margin-bottom: 16px;
+    }
+    
+    .user-message, .ai-message {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      align-items: flex-start;
+    }
+    
+    .user-message {
+      flex-direction: row-reverse;
+    }
+    
+    .message-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
       display: flex;
       align-items: center;
-      gap: 12px;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
     }
     
-    .toolbar-right {
+    .user-message .message-avatar {
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+    }
+    
+    .ai-message .message-avatar {
+      background: hsl(var(--muted));
+      color: hsl(var(--muted-foreground));
+    }
+    
+    .message-content {
+      background: hsl(var(--background));
+      border: 1px solid hsl(var(--border));
+      border-radius: 12px;
+      padding: 12px 16px;
+      max-width: 80%;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    
+    .user-message .message-content {
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      border-color: hsl(var(--primary));
+    }
+    
+    .message-content p {
+      margin: 0 0 8px 0;
+    }
+    
+    .message-content p:last-child {
+      margin-bottom: 0;
+    }
+    
+    .message-content ul {
+      margin: 8px 0 0 0;
+      padding-left: 20px;
+    }
+    
+    .message-content li {
+      margin-bottom: 4px;
+    }
+    
+    .chat-input-section {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    
+    .chat-input-wrapper {
+      position: relative;
+      flex: 1;
+    }
+    
+    .chat-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid hsl(var(--border));
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: vertical;
+      min-height: 44px;
+      max-height: 120px;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+    }
+    
+    .chat-input:focus {
+      outline: none;
+      border-color: hsl(var(--ring));
+      box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+    }
+    
+    .send-btn {
+      padding: 12px;
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    
+    .send-btn:hover:not(:disabled) {
+      background: hsl(var(--primary) / 0.9);
+      transform: scale(1.05);
+    }
+    
+    .send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .mention-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: hsl(var(--popover));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      box-shadow: 0 4px 12px hsl(0 0% 0% / 0.15);
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 50;
+      margin-top: 4px;
+    }
+    
+    .mention-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      border-bottom: 1px solid hsl(var(--border));
       display: flex;
       align-items: center;
       gap: 8px;
     }
     
-    /* Stats */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
+    .mention-item:last-child {
+      border-bottom: none;
+    }
+    
+    .mention-item:hover,
+    .mention-item.selected {
+      background: hsl(var(--accent));
+    }
+    
+    .mention-item-title {
+      font-weight: 500;
+      font-size: 14px;
+    }
+    
+    .mention-item-meta {
+      font-size: 12px;
+      color: hsl(var(--muted-foreground));
+    }
+    
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
     
     .stat-card {
@@ -621,51 +798,50 @@
         </div>
         
         <div class="content-body">
-          <!-- Stats -->
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-label">Total Analyses</div>
-              <div class="stat-value" id="totalAnalyses">0</div>
+          <!-- AI Chat Section -->
+          <div class="chat-section">
+            <div class="chat-header">
+              <h3>AI Analysis Chat</h3>
+              <button id="clearChatBtn" class="btn btn-secondary btn-sm">Clear Chat</button>
             </div>
-            <div class="stat-card">
-              <div class="stat-label">Feature Reports</div>
-              <div class="stat-value" id="featureReports">0</div>
+            
+            <!-- Chat Messages -->
+            <div id="chatMessages" class="chat-messages">
+              <div class="welcome-message">
+                <div class="ai-message">
+                  <div class="message-avatar">🤖</div>
+                  <div class="message-content">
+                    <p>Hello! I can help you analyze your competitive intelligence data. Ask me questions about your saved analyses or reference specific documents using @.</p>
+                    <p><strong>Try asking:</strong></p>
+                    <ul>
+                      <li>"What are the key trends across my saved analyses?"</li>
+                      <li>"Compare the pricing strategies between @[Document 1] and @[Document 2]"</li>
+                      <li>"What features does @[Competitor Analysis] highlight?"</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="stat-card">
-              <div class="stat-label">Pricing Reports</div>
-              <div class="stat-value" id="pricingReports">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">This Month</div>
-              <div class="stat-value" id="thisMonth">0</div>
+            
+            <!-- Chat Input -->
+            <div class="chat-input-section">
+              <div class="chat-input-wrapper">
+                <textarea 
+                  id="chatInput" 
+                  class="chat-input" 
+                  placeholder="Ask questions about your analyses... Use @ to reference documents"
+                  rows="2"
+                ></textarea>
+                <div class="mention-dropdown" id="mentionDropdown" style="display: none;"></div>
+              </div>
+              <button id="sendBtn" class="send-btn" disabled>
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                </svg>
+              </button>
             </div>
           </div>
           
-          <!-- Toolbar -->
-          <div class="toolbar">
-            <div class="toolbar-left">
-              <label for="typeFilter" class="label sr-only">Filter by type</label>
-              <select id="typeFilter" class="select" style="width: auto;">
-                <option value="all">All Types</option>
-                <option value="feature">Feature Analysis</option>
-                <option value="pricing">Pricing Analysis</option>
-              </select>
-            </div>
-            <div class="toolbar-right">
-              <button id="exportAllBtn" class="btn btn-secondary btn-sm">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-                Export All
-              </button>
-              <button id="clearAllBtn" class="btn btn-destructive btn-sm">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                </svg>
-                Clear All
-              </button>
-            </div>
-          </div>
           
           <!-- Analyses Grid -->
           <div id="analysesContainer" class="analysis-grid">
@@ -732,9 +908,42 @@
             
             
             <div class="form-group">
-              <label for="companyContext" class="label">Your Company Context (Optional)</label>
-              <textarea id="companyContext" class="textarea" placeholder="Add information about your own company, product features, or specific areas to focus on during analysis..."></textarea>
-              <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">This context will be used to provide more relevant competitive analysis.</p>
+              <label for="companyContext" class="label">About Your Company (Optional)</label>
+              <textarea id="companyContext" class="textarea" placeholder="Describe your company, products, target market, key features, pricing strategy, and competitive positioning..."></textarea>
+              <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">This information helps the AI provide more relevant competitive comparisons and strategic insights.</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="customPrompts" class="label">Custom Analysis Prompts (Optional)</label>
+              <textarea id="customPrompts" class="textarea" rows="4" placeholder="Add custom instructions for AI analysis, such as:
+- Focus on specific aspects (pricing, features, market positioning)
+- Industry-specific considerations
+- Particular competitive threats to watch for
+- Key metrics or KPIs to highlight
+- Specific analysis frameworks to apply"></textarea>
+              <p style="font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px;">These custom prompts will be included in AI analysis to tailor responses to your specific needs.</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="analysisPreferences" class="label">Analysis Preferences</label>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                  <input type="checkbox" id="includeActionableInsights" style="margin: 0;">
+                  Always include actionable recommendations
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                  <input type="checkbox" id="focusOnDifferentiators" style="margin: 0;">
+                  Emphasize competitive differentiators
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                  <input type="checkbox" id="includeMarketContext" style="margin: 0;">
+                  Include broader market context when possible
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                  <input type="checkbox" id="prioritizeThreats" style="margin: 0;">
+                  Prioritize competitive threats and opportunities
+                </label>
+              </div>
             </div>
             
             <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>

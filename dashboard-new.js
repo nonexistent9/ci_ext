@@ -9,6 +9,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const initialModelSelect = document.getElementById('initialModelSelect');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   const companyContext = document.getElementById('companyContext');
+  const customPrompts = document.getElementById('customPrompts');
+  const includeActionableInsights = document.getElementById('includeActionableInsights');
+  const focusOnDifferentiators = document.getElementById('focusOnDifferentiators');
+  const includeMarketContext = document.getElementById('includeMarketContext');
+  const prioritizeThreats = document.getElementById('prioritizeThreats');
   
   // Usage stats elements
   const apiCallsToday = document.getElementById('apiCallsToday');
@@ -18,9 +23,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Analysis elements
   const analysesContainer = document.getElementById('analysesContainer');
   const noAnalyses = document.getElementById('noAnalyses');
-  const typeFilter = document.getElementById('typeFilter');
-  const clearAllBtn = document.getElementById('clearAllBtn');
-  const exportAllBtn = document.getElementById('exportAllBtn');
   
   // Sidebar elements
   const analysisSidebar = document.getElementById('analysisSidebar');
@@ -31,11 +33,12 @@ document.addEventListener('DOMContentLoaded', function() {
   const sidebarContent = document.getElementById('sidebarContent');
   const sidebarCopyBtn = document.getElementById('sidebarCopyBtn');
   
-  // Stats elements
-  const totalAnalyses = document.getElementById('totalAnalyses');
-  const featureReports = document.getElementById('featureReports');
-  const pricingReports = document.getElementById('pricingReports');
-  const thisMonth = document.getElementById('thisMonth');
+  // Chat elements
+  const chatInput = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const mentionDropdown = document.getElementById('mentionDropdown');
+  const chatMessages = document.getElementById('chatMessages');
+  const clearChatBtn = document.getElementById('clearChatBtn');
   
   // Navigation
   const navItems = document.querySelectorAll('.nav-item');
@@ -52,10 +55,13 @@ document.addEventListener('DOMContentLoaded', function() {
   saveKeyBtn.addEventListener('click', saveApiKey);
   showKeyBtn.addEventListener('click', toggleApiKeyDisplay);
   saveSettingsBtn.addEventListener('click', saveSettings);
-  typeFilter.addEventListener('change', filterAnalyses);
-  clearAllBtn.addEventListener('click', clearAllAnalyses);
-  exportAllBtn.addEventListener('click', exportAllAnalyses);
   analysesContainer.addEventListener('click', handleAnalysisAction);
+  
+  // Chat event listeners
+  sendBtn.addEventListener('click', sendMessage);
+  chatInput.addEventListener('input', handleChatInput);
+  chatInput.addEventListener('keydown', handleChatKeydown);
+  clearChatBtn.addEventListener('click', clearChat);
   
   // Sidebar event listeners
   closeSidebar.addEventListener('click', closeSidebarPanel);
@@ -161,11 +167,21 @@ document.addEventListener('DOMContentLoaded', function() {
   async function saveSettings() {
     const initialModel = initialModelSelect.value;
     const context = companyContext.value.trim();
+    const customPromptsValue = customPrompts.value.trim();
+    
+    const preferences = {
+      includeActionableInsights: includeActionableInsights.checked,
+      focusOnDifferentiators: focusOnDifferentiators.checked,
+      includeMarketContext: includeMarketContext.checked,
+      prioritizeThreats: prioritizeThreats.checked
+    };
     
     try {
       await chrome.storage.sync.set({ 
         initial_model: initialModel,
-        company_context: context
+        company_context: context,
+        custom_prompts: customPromptsValue,
+        analysis_preferences: preferences
       });
       showStatusMessage('Settings saved successfully', 'success');
     } catch (error) {
@@ -175,7 +191,12 @@ document.addEventListener('DOMContentLoaded', function() {
   
   async function loadSettings() {
     try {
-      const result = await chrome.storage.sync.get(['initial_model', 'company_context']);
+      const result = await chrome.storage.sync.get([
+        'initial_model', 
+        'company_context', 
+        'custom_prompts',
+        'analysis_preferences'
+      ]);
       
       if (result.initial_model) {
         initialModelSelect.value = result.initial_model;
@@ -183,6 +204,18 @@ document.addEventListener('DOMContentLoaded', function() {
       
       if (result.company_context) {
         companyContext.value = result.company_context;
+      }
+      
+      if (result.custom_prompts) {
+        customPrompts.value = result.custom_prompts;
+      }
+      
+      if (result.analysis_preferences) {
+        const prefs = result.analysis_preferences;
+        includeActionableInsights.checked = prefs.includeActionableInsights || false;
+        focusOnDifferentiators.checked = prefs.focusOnDifferentiators || false;
+        includeMarketContext.checked = prefs.includeMarketContext || false;
+        prioritizeThreats.checked = prefs.prioritizeThreats || false;
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -216,34 +249,293 @@ document.addEventListener('DOMContentLoaded', function() {
       const result = await chrome.storage.sync.get(['saved_analyses']);
       const savedAnalyses = result.saved_analyses || [];
       
-      updateStats(savedAnalyses);
       displayAnalyses(savedAnalyses);
     } catch (error) {
       console.error('Error loading saved analyses:', error);
     }
   }
   
-  function updateStats(analyses) {
-    const total = analyses.length;
-    const featureCount = analyses.filter(a => a.type === 'feature').length;
-    const pricingCount = analyses.filter(a => a.type === 'pricing').length;
+  // AI Chat functionality
+  let availableDocuments = [];
+  let selectedMentionIndex = -1;
+  let currentMentions = [];
+  let conversationHistory = [];
+  
+  async function sendMessage() {
+    const message = chatInput.value.trim();
+    if (!message) return;
     
-    // Calculate this month's analyses
-    const thisMonthStart = new Date();
-    thisMonthStart.setDate(1);
-    thisMonthStart.setHours(0, 0, 0, 0);
-    
-    const thisMonthCount = analyses.filter(a => {
-      const analysisDate = new Date(a.timestamp);
-      return analysisDate >= thisMonthStart;
-    }).length;
-    
-    totalAnalyses.textContent = total;
-    featureReports.textContent = featureCount;
-    pricingReports.textContent = pricingCount;
-    thisMonth.textContent = thisMonthCount;
+    try {
+      // Add user message to chat
+      addUserMessage(message);
+      
+      // Clear input and disable send button
+      chatInput.value = '';
+      updateSendButtonState();
+      
+      // Show typing indicator
+      const typingIndicator = addTypingIndicator();
+      
+      const referencedDocs = extractMentions(message);
+      const apiKey = await getStoredApiKey();
+      
+      if (!apiKey) {
+        removeTypingIndicator(typingIndicator);
+        addAiMessage('Please set your OpenAI API key in the settings first.');
+        return;
+      }
+      
+      // Send message to background script with conversation history
+      const response = await chrome.runtime.sendMessage({
+        type: 'aiChat',
+        message: message,
+        referencedDocs: referencedDocs,
+        conversationHistory: conversationHistory
+      });
+      
+      // Remove typing indicator
+      removeTypingIndicator(typingIndicator);
+      
+      if (response.success) {
+        addAiMessage(response.result);
+        // Add to conversation history
+        conversationHistory.push(
+          { role: 'user', content: message },
+          { role: 'assistant', content: response.result }
+        );
+      } else {
+        addAiMessage('Sorry, I encountered an error: ' + response.error);
+      }
+      
+    } catch (error) {
+      console.error('Chat error:', error);
+      addAiMessage('Sorry, I encountered an error while processing your message.');
+    }
   }
   
+  function addUserMessage(message) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'user-message';
+    messageDiv.innerHTML = `
+      <div class="message-avatar">👤</div>
+      <div class="message-content">
+        <p>${escapeHtml(message)}</p>
+      </div>
+    `;
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+  }
+  
+  function addAiMessage(message) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'ai-message';
+    messageDiv.innerHTML = `
+      <div class="message-avatar">🤖</div>
+      <div class="message-content">
+        <p>${escapeHtml(message).replace(/\n/g, '</p><p>')}</p>
+      </div>
+    `;
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+  }
+  
+  function addTypingIndicator() {
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'ai-message typing-indicator';
+    typingDiv.innerHTML = `
+      <div class="message-avatar">🤖</div>
+      <div class="message-content">
+        <p>Thinking...</p>
+      </div>
+    `;
+    chatMessages.appendChild(typingDiv);
+    scrollToBottom();
+    return typingDiv;
+  }
+  
+  function removeTypingIndicator(indicator) {
+    if (indicator && indicator.parentNode) {
+      indicator.parentNode.removeChild(indicator);
+    }
+  }
+  
+  function scrollToBottom() {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+  
+  function clearChat() {
+    if (confirm('Clear all chat messages?')) {
+      // Keep welcome message, clear the rest
+      const welcomeMessage = chatMessages.querySelector('.welcome-message');
+      chatMessages.innerHTML = '';
+      if (welcomeMessage) {
+        chatMessages.appendChild(welcomeMessage);
+      }
+      conversationHistory = [];
+    }
+  }
+  
+  function handleChatInput(event) {
+    updateSendButtonState();
+    
+    const input = event.target;
+    const cursorPos = input.selectionStart;
+    const textBeforeCursor = input.value.substring(0, cursorPos);
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+    
+    if (lastAtIndex !== -1) {
+      const mentionText = textBeforeCursor.substring(lastAtIndex + 1);
+      if (mentionText.length >= 0) {
+        showMentionDropdown(mentionText);
+      } else {
+        hideMentionDropdown();
+      }
+    } else {
+      hideMentionDropdown();
+    }
+  }
+  
+  function handleChatKeydown(event) {
+    if (mentionDropdown.style.display !== 'none') {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        selectedMentionIndex = Math.min(selectedMentionIndex + 1, currentMentions.length - 1);
+        updateMentionSelection();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        selectedMentionIndex = Math.max(selectedMentionIndex - 1, -1);
+        updateMentionSelection();
+      } else if (event.key === 'Enter' && selectedMentionIndex >= 0) {
+        event.preventDefault();
+        selectMention(currentMentions[selectedMentionIndex]);
+      } else if (event.key === 'Escape') {
+        hideMentionDropdown();
+      }
+    } else if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  }
+  
+  function updateSendButtonState() {
+    const hasMessage = chatInput.value.trim().length > 0;
+    sendBtn.disabled = !hasMessage;
+  }
+  
+  async function showMentionDropdown(searchText) {
+    if (availableDocuments.length === 0) {
+      await loadAvailableDocuments();
+    }
+    
+    const filteredDocs = availableDocuments.filter(doc =>
+      doc.title.toLowerCase().includes(searchText.toLowerCase()) ||
+      doc.domain.toLowerCase().includes(searchText.toLowerCase())
+    );
+    
+    if (filteredDocs.length === 0) {
+      hideMentionDropdown();
+      return;
+    }
+    
+    currentMentions = filteredDocs.slice(0, 5); // Limit to 5 results
+    selectedMentionIndex = -1;
+    
+    mentionDropdown.innerHTML = '';
+    currentMentions.forEach((doc, index) => {
+      const item = document.createElement('div');
+      item.className = 'mention-item';
+      item.innerHTML = `
+        <div class="mention-badge badge-${doc.type}">${doc.type}</div>
+        <div>
+          <div class="mention-item-title">${escapeHtml(doc.title)}</div>
+          <div class="mention-item-meta">${escapeHtml(doc.domain)} • ${new Date(doc.timestamp).toLocaleDateString()}</div>
+        </div>
+      `;
+      item.addEventListener('click', () => selectMention(doc));
+      mentionDropdown.appendChild(item);
+    });
+    
+    mentionDropdown.style.display = 'block';
+  }
+  
+  function hideMentionDropdown() {
+    mentionDropdown.style.display = 'none';
+    currentMentions = [];
+    selectedMentionIndex = -1;
+  }
+  
+  function updateMentionSelection() {
+    const items = mentionDropdown.querySelectorAll('.mention-item');
+    items.forEach((item, index) => {
+      item.classList.toggle('selected', index === selectedMentionIndex);
+    });
+  }
+  
+  function selectMention(doc) {
+    const input = chatInput;
+    const cursorPos = input.selectionStart;
+    const textBeforeCursor = input.value.substring(0, cursorPos);
+    const textAfterCursor = input.value.substring(cursorPos);
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+    
+    const newText = textBeforeCursor.substring(0, lastAtIndex) + 
+                   `@[${doc.title}]` + 
+                   textAfterCursor;
+    
+    input.value = newText;
+    input.focus();
+    
+    const newCursorPos = lastAtIndex + `@[${doc.title}]`.length;
+    input.setSelectionRange(newCursorPos, newCursorPos);
+    
+    hideMentionDropdown();
+    updateSendButtonState();
+  }
+  
+  function extractMentions(text) {
+    const mentions = [];
+    const mentionRegex = /@\[([^\]]+)\]/g;
+    let match;
+    
+    while ((match = mentionRegex.exec(text)) !== null) {
+      const mentionTitle = match[1];
+      const doc = availableDocuments.find(d => d.title === mentionTitle);
+      if (doc) {
+        mentions.push(doc);
+      }
+    }
+    
+    return mentions;
+  }
+  
+  async function loadAvailableDocuments() {
+    try {
+      const result = await chrome.storage.sync.get(['saved_analyses']);
+      availableDocuments = result.saved_analyses || [];
+    } catch (error) {
+      console.error('Error loading available documents:', error);
+      availableDocuments = [];
+    }
+  }
+  
+  
+  async function getStoredApiKey() {
+    try {
+      const result = await chrome.storage.sync.get(['openai_api_key']);
+      return result.openai_api_key || null;
+    } catch (error) {
+      console.error('Error getting API key:', error);
+      return null;
+    }
+  }
+  
+  // Utility function
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   function displayAnalyses(analyses) {
     analysesContainer.innerHTML = '';
     
@@ -432,68 +724,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
   
-  // Filter analyses
-  function filterAnalyses() {
-    const filterValue = typeFilter.value;
-    const analysisCards = document.querySelectorAll('.analysis-card');
-    
-    analysisCards.forEach(card => {
-      if (filterValue === 'all' || card.dataset.type === filterValue) {
-        card.style.display = 'block';
-      } else {
-        card.style.display = 'none';
-      }
-    });
-  }
-  
-  // Clear all analyses
-  async function clearAllAnalyses() {
-    if (!confirm('Are you sure you want to delete all saved analyses? This action cannot be undone.')) {
-      return;
-    }
-    
-    try {
-      await chrome.storage.sync.set({ saved_analyses: [] });
-      loadSavedAnalyses();
-      showStatusMessage('All analyses cleared', 'success');
-    } catch (error) {
-      showStatusMessage('Error clearing analyses: ' + error.message, 'error');
-    }
-  }
-  
-  // Export all analyses
-  async function exportAllAnalyses() {
-    try {
-      const result = await chrome.storage.sync.get(['saved_analyses']);
-      const savedAnalyses = result.saved_analyses || [];
-      
-      if (savedAnalyses.length === 0) {
-        showStatusMessage('No analyses to export', 'error');
-        return;
-      }
-      
-      const exportData = {
-        exportDate: new Date().toISOString(),
-        totalAnalyses: savedAnalyses.length,
-        analyses: savedAnalyses
-      };
-      
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ci-analyses-export-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      showStatusMessage(`Exported ${savedAnalyses.length} analyses`, 'success');
-    } catch (error) {
-      showStatusMessage('Error exporting analyses: ' + error.message, 'error');
-    }
-  }
   
   // Show status message
   function showStatusMessage(message, type) {

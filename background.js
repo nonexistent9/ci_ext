@@ -47,6 +47,8 @@ chrome.notifications?.onClicked.addListener(() => {
 
 // Listen for long-running analysis requests so work continues even if popup closes
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('Background received message:', message.type);
+  
   if (message?.type === 'startAnalysis') {
     startBackgroundAnalysis(message)
       .then(() => {
@@ -60,6 +62,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           error: error?.message || 'Unknown error',
         });
         sendResponse({ success: false, error: error?.message });
+      });
+    return true; // Keep message channel open for async response
+  }
+  
+  if (message?.type === 'aiChat') {
+    console.log('Processing aiChat message');
+    handleAiChat(message)
+      .then((result) => {
+        console.log('aiChat completed successfully');
+        sendResponse({ success: true, result });
+      })
+      .catch((error) => {
+        console.error('AI chat error:', error);
+        sendResponse({ success: false, error: error?.message || 'Unknown error' });
       });
     return true; // Keep message channel open for async response
   }
@@ -103,7 +119,12 @@ async function startBackgroundAnalysis(payload) {
 
   chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: 'Building prompt...' });
   const companyContext = await getCompanyContext();
+  const customPrompts = await getCustomPrompts();
+  const analysisPreferences = await getAnalysisPreferences();
+  
   const companyContextSection = companyContext ? `\nYOUR COMPANY CONTEXT (For Comparison):\n${companyContext}\n` : '';
+  const customPromptsSection = customPrompts ? `\nCUSTOM ANALYSIS INSTRUCTIONS:\n${customPrompts}\n` : '';
+  const preferencesSection = buildPreferencesSection(analysisPreferences);
 
   const isPricingPage = pageData.url.toLowerCase().includes('pricing') ||
     pageData.title.toLowerCase().includes('pricing') ||
@@ -111,9 +132,9 @@ async function startBackgroundAnalysis(payload) {
 
   let prompt;
   if (isPricingPage) {
-    prompt = `Extract pricing information from this competitor's pricing page.\n\nPRICING PAGE ANALYSIS:\nCompany: ${pageData.title}\nURL: ${pageData.url}${companyContextSection}\n\nPAGE CONTENT:\n${pageData.textContent.substring(0, 8000)}...\n\nPlease provide a simple pricing analysis:\n\n1. PRICING PLANS (list each plan with key details)\n2. PRICING STRUCTURE (monthly/annual, per user, etc.)\n3. KEY FEATURES BY PLAN\n4. FREE TRIAL/FREEMIUM OPTIONS\n5. ENTERPRISE/CUSTOM PRICING${companyContext ? '\n6. PRICING COMPARISON WITH YOUR COMPANY' : ''}\n\nKeep it concise and focused on pricing details only.`;
+    prompt = `Extract pricing information from this competitor's pricing page.\n\nPRICING PAGE ANALYSIS:\nCompany: ${pageData.title}\nURL: ${pageData.url}${companyContextSection}${customPromptsSection}${preferencesSection}\n\nPAGE CONTENT:\n${pageData.textContent.substring(0, 8000)}...\n\nPlease provide a simple pricing analysis:\n\n1. PRICING PLANS (list each plan with key details)\n2. PRICING STRUCTURE (monthly/annual, per user, etc.)\n3. KEY FEATURES BY PLAN\n4. FREE TRIAL/FREEMIUM OPTIONS\n5. ENTERPRISE/CUSTOM PRICING${companyContext ? '\n6. PRICING COMPARISON WITH YOUR COMPANY' : ''}\n\nKeep it concise and focused on pricing details only.`;
   } else {
-    prompt = `Extract the key features and capabilities from this competitor's website.\n\nFEATURE EXTRACTION:\nCompany: ${pageData.title}\nURL: ${pageData.url}${companyContextSection}\n\nKEY PAGE ELEMENTS:\nMain Headings: ${pageData.headings.map(h => h.text || h).slice(0, 15).join(', ')}\nCall-to-Actions: ${pageData.buttons.slice(0, 10).join(', ')}\n\nPAGE CONTENT:\n${pageData.textContent.substring(0, 8000)}...\n\nPlease provide a simple feature summary:\n\n1. CORE FEATURES (list main product features)\n2. KEY CAPABILITIES (what the product does)\n3. TARGET USERS (who it's for)\n4. INTEGRATIONS (if mentioned)\n5. UNIQUE SELLING POINTS${companyContext ? '\n6. FEATURE COMPARISON WITH YOUR COMPANY' : ''}\n\nKeep it simple and focused on features only. Avoid strategic analysis.`;
+    prompt = `Extract the key features and capabilities from this competitor's website.\n\nFEATURE EXTRACTION:\nCompany: ${pageData.title}\nURL: ${pageData.url}${companyContextSection}${customPromptsSection}${preferencesSection}\n\nKEY PAGE ELEMENTS:\nMain Headings: ${pageData.headings.map(h => h.text || h).slice(0, 15).join(', ')}\nCall-to-Actions: ${pageData.buttons.slice(0, 10).join(', ')}\n\nPAGE CONTENT:\n${pageData.textContent.substring(0, 8000)}...\n\nPlease provide a simple feature summary:\n\n1. CORE FEATURES (list main product features)\n2. KEY CAPABILITIES (what the product does)\n3. TARGET USERS (who it's for)\n4. INTEGRATIONS (if mentioned)\n5. UNIQUE SELLING POINTS${companyContext ? '\n6. FEATURE COMPARISON WITH YOUR COMPANY' : ''}\n\nKeep it simple and focused on features only. Avoid strategic analysis.`;
   }
 
   const model = await getInitialModel();
@@ -183,6 +204,261 @@ async function startBackgroundAnalysis(payload) {
   }
 }
 
+async function handleAiChat(payload) {
+  const { message, referencedDocs, conversationHistory } = payload;
+  
+  const apiKey = await getStoredApiKey();
+  if (!apiKey) {
+    throw new Error('OpenAI API key not found. Please set your API key in the dashboard.');
+  }
+
+  await updateUsageStats();
+  
+  // If no documents are referenced, try to find relevant documents automatically
+  let docsToAnalyze = referencedDocs;
+  if (!referencedDocs || referencedDocs.length === 0) {
+    docsToAnalyze = await findRelevantDocuments(message);
+  }
+  
+  // Get user preferences and custom prompts for chat
+  const companyContext = await getCompanyContext();
+  const customPrompts = await getCustomPrompts();
+  const analysisPreferences = await getAnalysisPreferences();
+
+  // Build context from documents to analyze
+  let documentContext = '';
+  if (docsToAnalyze && docsToAnalyze.length > 0) {
+    documentContext = '\n\n=== REFERENCED DOCUMENTS FOR ANALYSIS ===\n';
+    docsToAnalyze.forEach((doc, index) => {
+      documentContext += `\n--- DOCUMENT ${index + 1}: "${doc.title}" ---\n`;
+      documentContext += `• Company/Source: ${doc.domain}\n`;
+      documentContext += `• URL: ${doc.url}\n`;
+      documentContext += `• Analysis Type: ${doc.type.toUpperCase()}\n`;
+      documentContext += `• Date Analyzed: ${new Date(doc.timestamp).toLocaleDateString()}\n`;
+      
+      // Extract key sections from the content and chunk if too large
+      const content = doc.content;
+      const maxContentLength = 3000; // Limit per document to avoid token issues
+      
+      if (content.length <= maxContentLength) {
+        documentContext += `• Full Analysis Content:\n\n${content}\n\n`;
+      } else {
+        // Extract the most relevant parts
+        const chunks = chunkContent(content, message, maxContentLength);
+        documentContext += `• Relevant Content Sections:\n\n${chunks}\n\n`;
+      }
+      
+      // Try to extract specific sections if they exist
+      if (content.includes('CORE FEATURES') || content.includes('KEY FEATURES')) {
+        const featuresMatch = content.match(/(?:CORE|KEY) FEATURES[:\s]*([^]*?)(?=\n\n|\d\.|[A-Z]{2,}|$)/);
+        if (featuresMatch) {
+          documentContext += `• Key Features Identified:\n${featuresMatch[1].trim()}\n\n`;
+        }
+      }
+      
+      if (content.includes('PRICING') || content.includes('PLANS')) {
+        const pricingMatch = content.match(/PRICING[:\s]*([^]*?)(?=\n\n|\d\.|[A-Z]{2,}|$)/);
+        if (pricingMatch) {
+          documentContext += `• Pricing Information:\n${pricingMatch[1].trim()}\n\n`;
+        }
+      }
+      
+      documentContext += `--- END OF DOCUMENT ${index + 1} ---\n\n`;
+    });
+    
+    documentContext += `\nIMPORTANT: Base your analysis ONLY on the content provided above. Reference specific details, quotes, or sections from these documents in your response.\n`;
+  } else {
+    // No documents found or provided
+    documentContext = '\n\nNOTE: No specific documents were referenced or found to be relevant to this query. Please provide general competitive intelligence guidance or ask the user to reference specific documents using @ mentions.\n';
+  }
+
+  // Build enhanced system prompt with user preferences
+  let systemPrompt = `You are an expert competitive intelligence analyst with deep expertise in business strategy, market analysis, and competitive positioning. Your role is to analyze competitive intelligence data and provide actionable strategic insights.
+
+CORE RESPONSIBILITIES:
+- Extract and analyze key information from competitive intelligence reports
+- Compare competitors' strategies, features, pricing, and positioning
+- Identify market trends, opportunities, and threats
+- Provide specific, actionable strategic recommendations
+- Reference specific details from documents when available
+
+ANALYSIS APPROACH:
+- When documents are provided: Always ground responses in the specific data provided
+- Quote relevant sections from documents when making points
+- Be specific about what you found in each document
+- If comparing multiple documents, clearly differentiate between them
+- If asked about something not in the provided documents, clearly state that
+- When no documents are available: Provide general competitive intelligence best practices and guidance
+
+RESPONSE STYLE:
+- Be direct and actionable
+- Use bullet points and clear structure when analyzing multiple points
+- When documents are available: Reference specific document sections or quotes
+- When no documents are available: Provide educational content about competitive intelligence methods
+- Always be honest about the availability of specific data
+- If no relevant information is found, suggest how the user can get better results
+
+DOCUMENT HANDLING:
+- When documents are referenced with @[Document Name]: Focus exclusively on analyzing those specific documents
+- When no documents are referenced: Automatically search for relevant documents from the user's saved analyses
+- When no relevant documents exist: Provide general guidance and suggest ways to gather competitive intelligence
+- Always cite specific information from documents rather than making general statements when data is available.`;
+
+  // Add user preferences to system prompt
+  if (analysisPreferences) {
+    systemPrompt += `\n\nUSER PREFERENCES:`;
+    if (analysisPreferences.includeActionableInsights) {
+      systemPrompt += `\n- Always include specific, actionable recommendations in your responses`;
+    }
+    if (analysisPreferences.focusOnDifferentiators) {
+      systemPrompt += `\n- Emphasize unique competitive differentiators and key distinguishing factors`;
+    }
+    if (analysisPreferences.includeMarketContext) {
+      systemPrompt += `\n- When possible, include broader market context and industry trends`;
+    }
+    if (analysisPreferences.prioritizeThreats) {
+      systemPrompt += `\n- Prioritize identification of competitive threats and market opportunities`;
+    }
+  }
+  
+  // Add company context if available
+  if (companyContext) {
+    systemPrompt += `\n\nUSER'S COMPANY CONTEXT:\n${companyContext}`;
+  }
+  
+  // Add custom prompts if available
+  if (customPrompts) {
+    systemPrompt += `\n\nCUSTOM ANALYSIS INSTRUCTIONS:\n${customPrompts}`;
+  }
+
+  // Build messages array with conversation history
+  const messages = [
+    { role: 'system', content: systemPrompt }
+  ];
+
+  // Add conversation history (limit to last 10 messages to avoid token limits)
+  const recentHistory = conversationHistory.slice(-10);
+  messages.push(...recentHistory);
+
+  // Add current message with document context if needed
+  const currentMessage = documentContext ? `${message}${documentContext}` : message;
+  messages.push({ role: 'user', content: currentMessage });
+
+  const model = await getInitialModel();
+  const requestBody = {
+    model,
+    messages,
+    max_tokens: 1500,
+    temperature: 0.7
+  };
+
+  // Add timeout to OpenAI API call
+  const fetchPromise = fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(requestBody)
+  });
+  
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error('OpenAI API request timed out')), 120000) // 2 minute timeout
+  );
+  
+  const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(`OpenAI API Error: ${error.error?.message || 'Unknown error'}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || 'No response generated';
+}
+
+async function findRelevantDocuments(query) {
+  try {
+    const result = await chrome.storage.sync.get(['saved_analyses']);
+    const allDocs = result.saved_analyses || [];
+    
+    if (allDocs.length === 0) {
+      return [];
+    }
+    
+    // Simple keyword-based relevance scoring
+    const keywords = query.toLowerCase().split(/\s+/).filter(word => word.length > 3);
+    
+    const scoredDocs = allDocs.map(doc => {
+      let score = 0;
+      const docText = (doc.title + ' ' + doc.content + ' ' + doc.domain).toLowerCase();
+      
+      keywords.forEach(keyword => {
+        // Higher score for title matches
+        if (doc.title.toLowerCase().includes(keyword)) score += 5;
+        if (doc.domain.toLowerCase().includes(keyword)) score += 3;
+        // Count occurrences in content
+        const contentMatches = (docText.match(new RegExp(keyword, 'g')) || []).length;
+        score += contentMatches;
+      });
+      
+      return { doc, score };
+    });
+    
+    // Return top 3 most relevant documents with score > 0
+    return scoredDocs
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map(item => item.doc);
+      
+  } catch (error) {
+    console.error('Error finding relevant documents:', error);
+    return [];
+  }
+}
+
+function chunkContent(content, query, maxLength) {
+  // Split content into paragraphs/sections
+  const sections = content.split(/\n\n+/);
+  const keywords = query.toLowerCase().split(/\s+/).filter(word => word.length > 3);
+  
+  // Score each section based on query relevance
+  const scoredSections = sections.map(section => {
+    let score = 0;
+    const sectionLower = section.toLowerCase();
+    
+    keywords.forEach(keyword => {
+      const matches = (sectionLower.match(new RegExp(keyword, 'g')) || []).length;
+      score += matches;
+    });
+    
+    return { section: section.trim(), score };
+  }).filter(item => item.section.length > 20); // Filter out very short sections
+  
+  // Sort by relevance and build result within length limit
+  scoredSections.sort((a, b) => b.score - a.score);
+  
+  let result = '';
+  let currentLength = 0;
+  
+  for (const item of scoredSections) {
+    if (currentLength + item.section.length + 2 <= maxLength) {
+      result += item.section + '\n\n';
+      currentLength += item.section.length + 2;
+    } else {
+      // Try to fit a truncated version
+      const remaining = maxLength - currentLength - 50; // Leave space for truncation message
+      if (remaining > 100) {
+        result += item.section.substring(0, remaining) + '...\n\n';
+      }
+      break;
+    }
+  }
+  
+  return result.trim() || content.substring(0, maxLength) + '...';
+}
+
 
 // --- Shared helpers in background ---
 async function getStoredApiKey() {
@@ -234,6 +510,48 @@ async function getCompanyContext() {
     console.error('Error getting company context:', e);
     return '';
   }
+}
+
+async function getCustomPrompts() {
+  try {
+    const result = await chrome.storage.sync.get(['custom_prompts']);
+    return result.custom_prompts || '';
+  } catch (e) {
+    console.error('Error getting custom prompts:', e);
+    return '';
+  }
+}
+
+async function getAnalysisPreferences() {
+  try {
+    const result = await chrome.storage.sync.get(['analysis_preferences']);
+    return result.analysis_preferences || {};
+  } catch (e) {
+    console.error('Error getting analysis preferences:', e);
+    return {};
+  }
+}
+
+function buildPreferencesSection(preferences) {
+  if (!preferences || Object.keys(preferences).length === 0) {
+    return '';
+  }
+  
+  let section = '\n\nANALYSIS PREFERENCES:\n';
+  if (preferences.includeActionableInsights) {
+    section += '- Include specific actionable recommendations\n';
+  }
+  if (preferences.focusOnDifferentiators) {
+    section += '- Emphasize competitive differentiators\n';
+  }
+  if (preferences.includeMarketContext) {
+    section += '- Include broader market context when possible\n';
+  }
+  if (preferences.prioritizeThreats) {
+    section += '- Prioritize competitive threats and opportunities\n';
+  }
+  
+  return section;
 }
 
 // This function executes in the page context via chrome.scripting.executeScript
