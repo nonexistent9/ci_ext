@@ -52,7 +52,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize
   loadApiKey();
   loadSettings();
-  loadUsageStats();
+  // Usage stats section was removed; keep call guarded
+  if (apiCallsToday || apiCallsTotal || lastUsed) {
+    loadUsageStats();
+  }
   loadSavedAnalyses();
   setupNavigation();
   
@@ -249,15 +252,13 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const result = await chrome.storage.sync.get(['api_calls_today', 'api_calls_total', 'last_used']);
       
-      if (result.api_calls_today) {
+      if (apiCallsToday && result.api_calls_today) {
         apiCallsToday.textContent = result.api_calls_today;
       }
-      
-      if (result.api_calls_total) {
+      if (apiCallsTotal && result.api_calls_total) {
         apiCallsTotal.textContent = result.api_calls_total;
       }
-      
-      if (result.last_used) {
+      if (lastUsed && result.last_used) {
         lastUsed.textContent = new Date(result.last_used).toLocaleString();
       }
     } catch (error) {
