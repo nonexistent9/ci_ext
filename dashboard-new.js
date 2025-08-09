@@ -24,6 +24,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Analysis elements
   const analysesContainer = document.getElementById('analysesContainer');
   const noAnalyses = document.getElementById('noAnalyses');
+  const analysisSearchInput = document.getElementById('analysisSearchInput');
+  const analysisTypeFilter = document.getElementById('analysisTypeFilter');
+  const favoritesOnly = document.getElementById('favoritesOnly');
+  const competitorsContainer = document.getElementById('competitorsContainer');
   
   // Sidebar elements
   const analysisSidebar = document.getElementById('analysisSidebar');
@@ -34,7 +38,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const sidebarContent = document.getElementById('sidebarContent');
   const sidebarCopyBtn = document.getElementById('sidebarCopyBtn');
   
-  // Chat elements
+  // Chat elements (may not exist if chat UI is removed)
   const chatInput = document.getElementById('chatInput');
   const sendBtn = document.getElementById('sendBtn');
   const mentionDropdown = document.getElementById('mentionDropdown');
@@ -58,12 +62,26 @@ document.addEventListener('DOMContentLoaded', function() {
   saveSettingsBtn.addEventListener('click', saveSettings);
   // Supabase settings removed
   analysesContainer.addEventListener('click', handleAnalysisAction);
+  if (analysisSearchInput) analysisSearchInput.addEventListener('input', applyFilters);
+  if (analysisTypeFilter) analysisTypeFilter.addEventListener('change', applyFilters);
+  if (favoritesOnly) favoritesOnly.addEventListener('change', applyFilters);
+  if (competitorsContainer) {
+    competitorsContainer.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-domain]');
+      if (!chip) return;
+      const domain = chip.dataset.domain;
+      // Toggle selection
+      selectedDomainFilter = selectedDomainFilter === domain ? null : domain;
+      renderCompetitorChips(currentAnalysesRaw);
+      applyFilters();
+    });
+  }
   
-  // Chat event listeners
-  sendBtn.addEventListener('click', sendMessage);
-  chatInput.addEventListener('input', handleChatInput);
-  chatInput.addEventListener('keydown', handleChatKeydown);
-  clearChatBtn.addEventListener('click', clearChat);
+  // Chat event listeners (guarded)
+  if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+  if (chatInput) chatInput.addEventListener('input', handleChatInput);
+  if (chatInput) chatInput.addEventListener('keydown', handleChatKeydown);
+  if (clearChatBtn) clearChatBtn.addEventListener('click', clearChat);
   
   // Sidebar event listeners
   closeSidebar.addEventListener('click', closeSidebarPanel);
@@ -248,6 +266,9 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   // Analyses management
+  let dataSource = 'local'; // 'local' | 'supabase'
+  let currentAnalysesRaw = [];
+  let selectedDomainFilter = null;
   async function loadSavedAnalyses() {
     try {
       // First try to load from Supabase
@@ -259,8 +280,10 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       
       if (response.success && response.result.length > 0) {
-        // Display Supabase analyses
-        displaySupabaseAnalyses(response.result);
+        dataSource = 'supabase';
+        currentAnalysesRaw = response.result;
+        renderCompetitorChips(currentAnalysesRaw);
+        applyFilters();
         return;
       }
     } catch (error) {
@@ -271,8 +294,10 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const result = await chrome.storage.sync.get(['saved_analyses']);
       const savedAnalyses = result.saved_analyses || [];
-      
-      displayAnalyses(savedAnalyses);
+      dataSource = 'local';
+      currentAnalysesRaw = savedAnalyses;
+      renderCompetitorChips(currentAnalysesRaw);
+      applyFilters();
     } catch (error) {
       console.error('Error loading saved analyses:', error);
     }
@@ -383,6 +408,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   function scrollToBottom() {
+    if (!chatMessages) return;
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
   
@@ -441,6 +467,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   function updateSendButtonState() {
+    if (!chatInput || !sendBtn) return;
     const hasMessage = chatInput.value.trim().length > 0;
     sendBtn.disabled = !hasMessage;
   }
@@ -561,12 +588,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function displayAnalyses(analyses) {
     analysesContainer.innerHTML = '';
-    
     if (analyses.length === 0) {
       analysesContainer.appendChild(noAnalyses);
       return;
     }
-    
     analyses.forEach(analysis => {
       const analysisElement = createAnalysisElement(analysis);
       analysesContainer.appendChild(analysisElement);
@@ -575,17 +600,14 @@ document.addEventListener('DOMContentLoaded', function() {
   
   function displaySupabaseAnalyses(analyses) {
     analysesContainer.innerHTML = '';
-    
     if (analyses.length === 0) {
       analysesContainer.appendChild(noAnalyses);
       return;
     }
-    
     analyses.forEach(analysis => {
       const analysisElement = createSupabaseAnalysisElement(analysis);
       analysesContainer.appendChild(analysisElement);
     });
-    
     // Update available documents for chat
     availableDocuments = analyses.map(analysis => ({
       id: analysis.id,
@@ -596,6 +618,65 @@ document.addEventListener('DOMContentLoaded', function() {
       type: analysis.analysis_type,
       timestamp: analysis.created_at
     }));
+  }
+
+  // Filtering + competitors rendering
+  function applyFilters() {
+    const q = (analysisSearchInput?.value || '').toLowerCase().trim();
+    const type = analysisTypeFilter?.value || 'all';
+    const favOnly = !!(favoritesOnly && favoritesOnly.checked);
+    let list = currentAnalysesRaw.slice();
+    if (dataSource === 'supabase') {
+      list = list.filter(a => {
+        const matchesType = type === 'all' ||
+          (type === 'feature' && a.analysis_type === 'feature_extraction') ||
+          (type === 'pricing' && a.analysis_type === 'pricing_analysis') ||
+          (type === 'general' && a.analysis_type === 'general');
+        const matchesFav = !favOnly || !!a.is_favorite;
+        const hay = `${a.title || ''} ${a.domain || ''} ${a.content || ''}`.toLowerCase();
+        const matchesQ = !q || hay.includes(q);
+        const matchesDomain = !selectedDomainFilter || a.domain === selectedDomainFilter;
+        return matchesType && matchesFav && matchesQ && matchesDomain;
+      });
+      displaySupabaseAnalyses(list);
+    } else {
+      list = list.filter(a => {
+        const matchesType = type === 'all' || a.type === type;
+        const hay = `${a.title || ''} ${a.domain || ''} ${a.content || ''}`.toLowerCase();
+        const matchesQ = !q || hay.includes(q);
+        const matchesDomain = !selectedDomainFilter || a.domain === selectedDomainFilter;
+        return matchesType && matchesQ && matchesDomain;
+      });
+      displayAnalyses(list);
+    }
+  }
+
+  function renderCompetitorChips(list) {
+    if (!competitorsContainer) return;
+    const counts = new Map();
+    list.forEach(a => {
+      const domain = (dataSource === 'supabase') ? a.domain : a.domain;
+      if (!domain) return;
+      counts.set(domain, (counts.get(domain) || 0) + 1);
+    });
+    const items = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    competitorsContainer.innerHTML = '';
+    if (items.length === 0) {
+      competitorsContainer.innerHTML = '<div style="color: var(--muted-foreground)">No competitors yet</div>';
+      return;
+    }
+    items.forEach(([domain, count]) => {
+      const chip = document.createElement('button');
+      chip.className = 'btn btn-secondary btn-sm';
+      chip.style.margin = '4px 0';
+      chip.dataset.domain = domain;
+      chip.innerHTML = `${domain} <span style="opacity:0.7">(${count})</span>`;
+      if (selectedDomainFilter === domain) {
+        chip.classList.remove('btn-secondary');
+        chip.classList.add('btn-primary');
+      }
+      competitorsContainer.appendChild(chip);
+    });
   }
   
   function createAnalysisElement(analysis) {

@@ -798,48 +798,32 @@
         </div>
         
         <div class="content-body">
-          <!-- AI Chat Section -->
-          <div class="chat-section">
-            <div class="chat-header">
-              <h3>AI Analysis Chat</h3>
-              <button id="clearChatBtn" class="btn btn-secondary btn-sm">Clear Chat</button>
+          <!-- Competitors + Controls -->
+          <div class="card" id="analysisControls">
+            <div class="card-header">
+              <h2 class="card-title">Browse Analyses</h2>
+              <p class="card-description">Search, filter, and manage your saved analyses</p>
             </div>
-            
-            <!-- Chat Messages -->
-            <div id="chatMessages" class="chat-messages">
-              <div class="welcome-message">
-                <div class="ai-message">
-                  <div class="message-avatar">🤖</div>
-                  <div class="message-content">
-                    <p>Hello! I can help you analyze your competitive intelligence data. Ask me questions about your saved analyses or reference specific documents using @.</p>
-                    <p><strong>Try asking:</strong></p>
-                    <ul>
-                      <li>"What are the key trends across my saved analyses?"</li>
-                      <li>"Compare the pricing strategies between @[Document 1] and @[Document 2]"</li>
-                      <li>"What features does @[Competitor Analysis] highlight?"</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+              <input id="analysisSearchInput" class="input" style="flex: 1; min-width: 260px;" placeholder="Search by title, domain, or content">
+              <select id="analysisTypeFilter" class="select" style="min-width: 200px;">
+                <option value="all">All types</option>
+                <option value="feature">Feature Extraction</option>
+                <option value="pricing">Pricing Analysis</option>
+                <option value="general">General</option>
+              </select>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: hsl(var(--muted-foreground));">
+                <input type="checkbox" id="favoritesOnly" style="margin: 0;"> Favorites only
+              </label>
             </div>
-            
-            <!-- Chat Input -->
-            <div class="chat-input-section">
-              <div class="chat-input-wrapper">
-                <textarea 
-                  id="chatInput" 
-                  class="chat-input" 
-                  placeholder="Ask questions about your analyses... Use @ to reference documents"
-                  rows="2"
-                ></textarea>
-                <div class="mention-dropdown" id="mentionDropdown" style="display: none;"></div>
-              </div>
-              <button id="sendBtn" class="send-btn" disabled>
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                </svg>
-              </button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Competitors Tracked</h2>
+              <p class="card-description">Unique domains and counts from your saved analyses</p>
             </div>
+            <div id="competitorsContainer" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
           </div>
           
           
