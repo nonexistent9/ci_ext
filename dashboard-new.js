@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const apiKeyText = document.getElementById('apiKeyText');
   const status = document.getElementById('status');
   const initialModelSelect = document.getElementById('initialModelSelect');
-  const deepModelSelect = document.getElementById('deepModelSelect');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   const companyContext = document.getElementById('companyContext');
   
@@ -161,13 +160,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // Settings management
   async function saveSettings() {
     const initialModel = initialModelSelect.value;
-    const deepModel = deepModelSelect.value;
     const context = companyContext.value.trim();
     
     try {
       await chrome.storage.sync.set({ 
         initial_model: initialModel,
-        deep_model: deepModel,
         company_context: context
       });
       showStatusMessage('Settings saved successfully', 'success');
@@ -178,14 +175,10 @@ document.addEventListener('DOMContentLoaded', function() {
   
   async function loadSettings() {
     try {
-      const result = await chrome.storage.sync.get(['initial_model', 'deep_model', 'company_context']);
+      const result = await chrome.storage.sync.get(['initial_model', 'company_context']);
       
       if (result.initial_model) {
         initialModelSelect.value = result.initial_model;
-      }
-      
-      if (result.deep_model) {
-        deepModelSelect.value = result.deep_model;
       }
       
       if (result.company_context) {

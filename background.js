@@ -7,7 +7,26 @@ chrome.runtime.onInstalled.addListener(() => {
     title: 'Open CI Feature Extractor Dashboard',
     contexts: ['action']
   });
+  
+  // Clean up any stale jobs on startup
+  cleanupStaleJobs();
 });
+
+// Clean up jobs older than 10 minutes
+async function cleanupStaleJobs() {
+  try {
+    const result = await chrome.storage.local.get(['current_job']);
+    if (result.current_job && result.current_job.startedAt) {
+      const jobAge = Date.now() - result.current_job.startedAt;
+      if (jobAge > 10 * 60 * 1000) { // 10 minutes
+        console.log('Cleaning up stale job:', result.current_job);
+        await chrome.storage.local.remove('current_job');
+      }
+    }
+  } catch (e) {
+    console.error('Error cleaning up stale jobs:', e);
+  }
+}
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -29,28 +48,22 @@ chrome.notifications?.onClicked.addListener(() => {
 // Listen for long-running analysis requests so work continues even if popup closes
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'startAnalysis') {
-    startBackgroundAnalysis(message).catch((error) => {
-      console.error('Background analysis error:', error);
-      chrome.runtime.sendMessage({
-        type: 'analysisError',
-        jobId: message.jobId,
-        error: error?.message || 'Unknown error',
+    startBackgroundAnalysis(message)
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('Background analysis error:', error);
+        chrome.runtime.sendMessage({
+          type: 'analysisError',
+          jobId: message.jobId,
+          error: error?.message || 'Unknown error',
+        });
+        sendResponse({ success: false, error: error?.message });
       });
-    });
-    return true;
+    return true; // Keep message channel open for async response
   }
 
-  if (message?.type === 'startDeepAnalysis') {
-    startBackgroundDeepAnalysis(message).catch((error) => {
-      console.error('Background deep analysis error:', error);
-      chrome.runtime.sendMessage({
-        type: 'deepAnalysisError',
-        jobId: message.jobId,
-        error: error?.message || 'Unknown error',
-      });
-    });
-    return true;
-  }
 });
 
 async function startBackgroundAnalysis(payload) {
@@ -63,15 +76,27 @@ async function startBackgroundAnalysis(payload) {
     throw new Error('OpenAI API key not found. Please set your API key in the dashboard.');
   }
 
-  // Extract page data in the target tab
-  const [result] = await chrome.scripting.executeScript({
-    target: { tabId },
-    function: extractPageContent
-  });
+  // Extract page data in the target tab with timeout
+  let result;
+  try {
+    const scriptPromise = chrome.scripting.executeScript({
+      target: { tabId },
+      function: extractPageContent
+    });
+    
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Page content extraction timed out')), 30000)
+    );
+    
+    [result] = await Promise.race([scriptPromise, timeoutPromise]);
+  } catch (error) {
+    throw new Error(`Failed to extract page content: ${error.message}`);
+  }
 
   const pageData = result?.result;
   if (!pageData) {
-    throw new Error('Failed to extract page content');
+    throw new Error('No page content extracted - the page may not be accessible');
   }
 
   await updateUsageStats();
@@ -102,15 +127,13 @@ async function startBackgroundAnalysis(payload) {
       { role: 'user', content: prompt }
     ]
   };
-  if (model.includes('o3')) {
-    requestBody.max_completion_tokens = 2000;
-  } else {
-    requestBody.max_tokens = 2000;
-    requestBody.temperature = 0.3;
-  }
+  requestBody.max_tokens = 2000;
+  requestBody.temperature = 0.3;
 
   chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: `Contacting OpenAI (${model})...` });
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  
+  // Add timeout to OpenAI API call
+  const fetchPromise = fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -118,6 +141,12 @@ async function startBackgroundAnalysis(payload) {
     },
     body: JSON.stringify(requestBody)
   });
+  
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error('OpenAI API request timed out')), 120000) // 2 minute timeout
+  );
+  
+  const response = await Promise.race([fetchPromise, timeoutPromise]);
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
@@ -128,7 +157,7 @@ async function startBackgroundAnalysis(payload) {
   const analysis = data.choices?.[0]?.message?.content || '';
   const modelName = await getInitialModel();
   const reportType = isPricingPage ? 'PRICING ANALYSIS' : 'FEATURE EXTRACTION';
-  const report = `📋 ${reportType} REPORT\nGenerated: ${new Date().toLocaleString()}\nSource: ${pageData.url}\n\n${analysis}\n\n---\nPowered by OpenAI ${modelName} | CI Feature Extractor\n💡 Use "Think More" for deeper strategic analysis`;
+  const report = `📋 ${reportType} REPORT\nGenerated: ${new Date().toLocaleString()}\nSource: ${pageData.url}\n\n${analysis}\n\n---\nPowered by OpenAI ${modelName} | CI Feature Extractor`;
 
   const record = {
     id: jobId,
@@ -154,74 +183,6 @@ async function startBackgroundAnalysis(payload) {
   }
 }
 
-async function startBackgroundDeepAnalysis(payload) {
-  const { jobId, initialAnalysis, pageData, userPrompt } = payload;
-
-  chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: 'Starting deeper analysis...' });
-
-  const apiKey = await getStoredApiKey();
-  if (!apiKey) {
-    throw new Error('OpenAI API key not found. Please enter your API key.');
-  }
-
-  await updateUsageStats();
-
-  const systemPrompt = `You are an expert competitive intelligence strategist with deep expertise in business strategy, market analysis, and competitive positioning. You excel at extracting actionable insights from competitive data and providing strategic recommendations.\n\nYour task is to perform deeper analysis on the provided competitive intelligence report and respond to the user's specific analytical request.`;
-
-  const companyContext = await getCompanyContext();
-  const companyContextSection = companyContext ? `\nYOUR COMPANY CONTEXT (For Comparison):\n${companyContext}\n` : '';
-
-  const analysisPrompt = `INITIAL COMPETITIVE ANALYSIS:\n${initialAnalysis}\n\nADDITIONAL CONTEXT:\nCompany: ${pageData.title}\nURL: ${pageData.url}\nPage Content Sample: ${pageData.textContent.substring(0, 3000)}...${companyContextSection}\n\nUSER REQUEST FOR DEEPER ANALYSIS:\n${userPrompt}\n\nPlease provide a comprehensive deeper analysis that builds upon the initial report. Focus on:\n- Strategic implications and recommendations\n- Market positioning insights\n- Competitive threats and opportunities\n- Business model analysis\n- Go-to-market strategy insights\n- Potential vulnerabilities or strengths\n- Actionable next steps for competitive response\n\nFormat your response as a strategic analysis memo with clear sections and actionable recommendations.`;
-
-  const model = await getDeepModel();
-  const requestBody = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: analysisPrompt }
-    ],
-    max_completion_tokens: 3000
-  };
-
-  chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: `Contacting OpenAI (${model})...` });
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`OpenAI API Error: ${error.error?.message || 'Unknown error'}`);
-  }
-
-  const data = await response.json();
-  const deeperAnalysis = data.choices?.[0]?.message?.content || '';
-  const modelName = await getDeepModel();
-  const report = `🧠 DEEPER STRATEGIC ANALYSIS\nGenerated: ${new Date().toLocaleString()}\nModel: OpenAI ${modelName}\nSource: ${pageData.url}\n\nUSER PROMPT: "${userPrompt}"\n\n${deeperAnalysis}\n\n📋 ORIGINAL ANALYSIS REFERENCE:\n${initialAnalysis}\n\n---\nPowered by OpenAI ${modelName} | Advanced CI Analysis`;
-
-  const record = {
-    id: jobId,
-    status: 'complete',
-    timestamp: new Date().toISOString(),
-    pageData,
-    report,
-  };
-  await chrome.storage.local.set({ last_analysis: record });
-  chrome.runtime.sendMessage({ type: 'deepAnalysisComplete', jobId, pageData, report });
-
-  try {
-    await chrome.notifications.create(jobId, {
-      type: 'basic',
-      iconUrl: 'public/icon128.png',
-      title: 'CI Feature Extractor',
-      message: 'Deeper analysis complete. Click to view the report.'
-    });
-  } catch (e) {}
-}
 
 // --- Shared helpers in background ---
 async function getStoredApiKey() {
@@ -264,15 +225,6 @@ async function getInitialModel(defaultModel = 'gpt-4o-mini') {
   }
 }
 
-async function getDeepModel(defaultModel = 'o3-mini') {
-  try {
-    const result = await chrome.storage.sync.get(['deep_model']);
-    return result.deep_model || defaultModel;
-  } catch (e) {
-    console.error('Error getting deep model:', e);
-    return defaultModel;
-  }
-}
 
 async function getCompanyContext() {
   try {

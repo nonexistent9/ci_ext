@@ -5,22 +5,14 @@ document.addEventListener('DOMContentLoaded', function () {
   const copyBtn = document.getElementById('copyBtn');
   const saveBtn = document.getElementById('saveBtn');
   const settingsBtn = document.getElementById('settingsBtn');
-  const thinkMoreSection = document.getElementById('thinkMoreSection');
-  const thinkMoreBtn = document.getElementById('thinkMoreBtn');
-  const customPrompt = document.getElementById('customPrompt');
-
-  // Store the initial analysis and page data for deeper analysis
+  // Store the initial analysis and page data
   let currentAnalysis = '';
   let currentPageData = null;
-
-  // Update the Think More button text based on the selected model
-  updateThinkMoreButtonText();
 
   extractBtn.addEventListener('click', extractFeatures);
   copyBtn.addEventListener('click', copyToClipboard);
   saveBtn.addEventListener('click', saveAnalysis);
   settingsBtn.addEventListener('click', openDashboard);
-  thinkMoreBtn.addEventListener('click', performDeeperAnalysis);
 
   // Recover any in-progress or last results when popup opens
   (async () => {
@@ -31,40 +23,43 @@ document.addEventListener('DOMContentLoaded', function () {
       ]);
 
       if (current_job && current_job.jobId) {
-        showStatus('Analysis running in background...', 'loading');
-        const onMessage = (message) => {
-          if (!message || message.jobId !== current_job.jobId) return;
-          if (message.type === 'analysisProgress') showStatus(message.message, 'loading');
-          if (message.type === 'analysisComplete') {
-            currentPageData = message.pageData;
-            displayResults(message.report);
-            showStatus('Analysis completed successfully!', 'success');
-            chrome.storage.local.remove('current_job');
+        // Check if job is stale (older than 10 minutes)
+        const jobAge = Date.now() - (current_job.startedAt || 0);
+        if (jobAge > 10 * 60 * 1000) {
+          console.log('Removing stale job from popup:', current_job);
+          await chrome.storage.local.remove('current_job');
+          showStatus('Previous analysis timed out', 'error');
+        } else {
+          showStatus('Analysis running in background...', 'loading');
+          const onMessage = (message) => {
+            if (!message || message.jobId !== current_job.jobId) return;
+            if (message.type === 'analysisProgress') showStatus(message.message, 'loading');
+            if (message.type === 'analysisComplete') {
+              currentPageData = message.pageData;
+              displayResults(message.report);
+              showStatus('Analysis completed successfully!', 'success');
+              chrome.storage.local.remove('current_job');
+              chrome.runtime.onMessage.removeListener(onMessage);
+              extractBtn.disabled = false;
+            }
+            if (message.type === 'analysisError') {
+              showStatus('Error: ' + message.error, 'error');
+              chrome.storage.local.remove('current_job');
+              chrome.runtime.onMessage.removeListener(onMessage);
+              extractBtn.disabled = false;
+            }
+          };
+          chrome.runtime.onMessage.addListener(onMessage);
+          extractBtn.disabled = true;
+          
+          // Set a timeout to clean up if no response after 5 minutes
+          setTimeout(() => {
             chrome.runtime.onMessage.removeListener(onMessage);
+            chrome.storage.local.remove('current_job');
+            showStatus('Analysis timed out', 'error');
             extractBtn.disabled = false;
-          }
-          if (message.type === 'analysisError') {
-            showStatus('Error: ' + message.error, 'error');
-            chrome.storage.local.remove('current_job');
-            chrome.runtime.onMessage.removeListener(onMessage);
-            extractBtn.disabled = false;
-          }
-          if (message.type === 'deepAnalysisComplete') {
-            displayResults(message.report);
-            showStatus('Deeper analysis completed!', 'success');
-            chrome.storage.local.remove('current_job');
-            chrome.runtime.onMessage.removeListener(onMessage);
-            thinkMoreBtn.disabled = false;
-          }
-          if (message.type === 'deepAnalysisError') {
-            showStatus('Error: ' + message.error, 'error');
-            chrome.storage.local.remove('current_job');
-            chrome.runtime.onMessage.removeListener(onMessage);
-            thinkMoreBtn.disabled = false;
-          }
-        };
-        chrome.runtime.onMessage.addListener(onMessage);
-        extractBtn.disabled = true;
+          }, 5 * 60 * 1000);
+        }
       } else if (last_analysis && last_analysis.report) {
         // Only auto-show if it matches current tab URL
         if (tab && last_analysis.pageData && last_analysis.pageData.url === tab.url) {
@@ -78,11 +73,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   })();
   
-  // Update the Think More button text when the popup is opened
-  async function updateThinkMoreButtonText() {
-    const model = await getDeepModel();
-    thinkMoreBtn.textContent = `🧠 Think More (${model})`;
-  }
 
   async function extractFeatures() {
     try {
@@ -143,7 +133,6 @@ document.addEventListener('DOMContentLoaded', function () {
     results.style.display = 'block';
     copyBtn.style.display = 'block';
     saveBtn.style.display = 'block';
-    thinkMoreSection.style.display = 'block';
   }
 
   function copyToClipboard() {
@@ -200,147 +189,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Removed in-popup AI call; now handled by background
-
-  // Deeper analysis with o3 models only
-  async function performDeeperAnalysis() {
-    try {
-      thinkMoreBtn.disabled = true;
-      const model = await getDeepModel();
-      showStatus(`Starting deeper analysis with ${model} in background...`, 'loading');
-
-      const apiKey = await getStoredApiKey();
-      if (!apiKey) return;
-
-      const userPrompt = customPrompt.value.trim() || 'Provide deeper strategic insights and actionable recommendations based on this competitive analysis.';
-
-      const jobId = `deep_${Date.now()}`;
-      await chrome.storage.local.set({ current_job: { jobId, type: 'deep', startedAt: Date.now() } });
-
-      const onMessage = (message) => {
-        if (!message || message.jobId !== jobId) return;
-        if (message.type === 'analysisProgress') {
-          showStatus(message.message, 'loading');
-        }
-        if (message.type === 'deepAnalysisComplete') {
-          displayResults(message.report);
-          showStatus('Deeper analysis completed!', 'success');
-          chrome.storage.local.remove('current_job');
-          chrome.runtime.onMessage.removeListener(onMessage);
-          thinkMoreBtn.disabled = false;
-        }
-        if (message.type === 'deepAnalysisError') {
-          showStatus('Error: ' + message.error, 'error');
-          chrome.storage.local.remove('current_job');
-          chrome.runtime.onMessage.removeListener(onMessage);
-          thinkMoreBtn.disabled = false;
-        }
-      };
-      chrome.runtime.onMessage.addListener(onMessage);
-
-      chrome.runtime.sendMessage({
-        type: 'startDeepAnalysis',
-        jobId,
-        initialAnalysis: currentAnalysis,
-        pageData: currentPageData,
-        userPrompt
-      });
-
-    } catch (error) {
-      console.error('Error:', error);
-      showStatus('Error: ' + error.message, 'error');
-      thinkMoreBtn.disabled = false;
-    }
-  }
-
-  // Process with o3 models only for deeper analysis
-  async function processWithO3Mini(initialAnalysis, pageData, userPrompt, apiKey) {
-    // Update usage statistics
-    await updateUsageStats();
-    const systemPrompt = `You are an expert competitive intelligence strategist with deep expertise in business strategy, market analysis, and competitive positioning. You excel at extracting actionable insights from competitive data and providing strategic recommendations.
-
-Your task is to perform deeper analysis on the provided competitive intelligence report and respond to the user's specific analytical request.`;
-
-    // Get company context if available
-    const companyContext = await getCompanyContext();
-    const companyContextSection = companyContext ?
-      `\nYOUR COMPANY CONTEXT (For Comparison):
-${companyContext}\n` : '';
-
-    const analysisPrompt = `INITIAL COMPETITIVE ANALYSIS:
-${initialAnalysis}
-
-ADDITIONAL CONTEXT:
-Company: ${pageData.title}
-URL: ${pageData.url}
-Page Content Sample: ${pageData.textContent.substring(0, 3000)}...${companyContextSection}
-
-USER REQUEST FOR DEEPER ANALYSIS:
-${userPrompt}
-
-Please provide a comprehensive deeper analysis that builds upon the initial report. Focus on:
-- Strategic implications and recommendations
-- Market positioning insights
-- Competitive threats and opportunities
-- Business model analysis
-- Go-to-market strategy insights
-- Potential vulnerabilities or strengths
-- Actionable next steps for competitive response
-
-Format your response as a strategic analysis memo with clear sections and actionable recommendations.`;
-
-    const model = await getDeepModel();
-    const requestBody = {
-      model: model,
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        {
-          role: 'user',
-          content: analysisPrompt
-        }
-      ]
-    };
-
-    // o3 models always use max_completion_tokens (no temperature)
-    requestBody.max_completion_tokens = 3000;
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`OpenAI API Error: ${error.error?.message || 'Unknown error'}`);
-    }
-
-    const data = await response.json();
-    const deeperAnalysis = data.choices[0].message.content;
-
-    const modelName = await getDeepModel();
-
-    return `🧠 DEEPER STRATEGIC ANALYSIS
-Generated: ${new Date().toLocaleString()}
-Model: OpenAI ${modelName}
-Source: ${pageData.url}
-
-USER PROMPT: "${userPrompt}"
-
-${deeperAnalysis}
-
-📋 ORIGINAL ANALYSIS REFERENCE:
-${initialAnalysis}
-
----
-Powered by OpenAI ${modelName} | Advanced CI Analysis`;
-  }
 
   // This function is no longer used as we're using AI for feature extraction
   // Keeping it for reference or future use
@@ -468,16 +316,6 @@ async function getInitialModel(defaultModel = 'gpt-4o-mini') {
   }
 }
 
-// Get deep analysis model from settings
-async function getDeepModel(defaultModel = 'o3-mini') {
-  try {
-    const result = await chrome.storage.sync.get(['deep_model']);
-    return result.deep_model || defaultModel; // Default if not set
-  } catch (error) {
-    console.error('Error getting deep model:', error);
-    return defaultModel; // Fallback
-  }
-}
 
 // Get company context from settings
 async function getCompanyContext() {
