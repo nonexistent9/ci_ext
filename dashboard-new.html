@@ -887,6 +887,23 @@
             
             <div id="status" class="hidden" style="margin-top: 12px; padding: 12px; border-radius: var(--radius);"></div>
           </div>
+
+          <!-- Supabase Settings -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Supabase Settings</h2>
+              <p class="card-description">Configure Supabase URL and anon key for OAuth and database</p>
+            </div>
+            <div class="form-group">
+              <label for="supabaseUrl" class="label">Supabase URL</label>
+              <input type="text" id="supabaseUrl" class="input" placeholder="https://YOUR-PROJECT.supabase.co">
+            </div>
+            <div class="form-group">
+              <label for="supabaseAnonKey" class="label">Supabase anon key</label>
+              <input type="password" id="supabaseAnonKey" class="input" placeholder="Paste anon key">
+            </div>
+            <button id="saveSupabaseBtn" class="btn btn-primary">Save Supabase Settings</button>
+          </div>
           
           <!-- Model Settings -->
           <div class="card">

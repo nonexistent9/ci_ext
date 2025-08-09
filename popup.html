@@ -110,6 +110,19 @@
     <h3>CI Feature Extractor</h3>
   </div>
   
+  <div id="authSection" style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="display:flex; gap:8px;">
+      <input id="emailInput" class="api-input" type="email" placeholder="Email" />
+      <input id="passwordInput" class="api-input" type="password" placeholder="Password" />
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button id="emailSignInBtn" class="dashboard-btn">Sign in</button>
+      <button id="emailSignUpBtn" class="dashboard-btn" style="background:#17a2b8;">Sign up</button>
+      <button id="logoutBtn" class="dashboard-btn" style="background:#6c757d; display:none;">Log out</button>
+    </div>
+  </div>
+  <div id="authStatus" class="status" style="display:none;"></div>
+  
   <button id="extractBtn" class="extract-btn">Extract Features</button>
   
   <div id="status" class="status" style="display: none;"></div>
@@ -127,6 +140,10 @@
     <a href="#" id="settingsBtn" style="color: #6c757d; font-size: 12px; text-decoration: none;">⚙️ Settings</a>
   </div>
   
+  <script src="config.js"></script>
   <script src="popup.js"></script>
+  <script>
+    // expose for popup.js access when loaded before config bundling
+  </script>
 </body>
 </html>

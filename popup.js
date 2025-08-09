@@ -6,6 +6,12 @@ document.addEventListener('DOMContentLoaded', function () {
   const saveBtn = document.getElementById('saveBtn');
   const settingsBtn = document.getElementById('settingsBtn');
   const dashboardBtn = document.getElementById('dashboardBtn');
+  const authStatus = document.getElementById('authStatus');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const emailInput = document.getElementById('emailInput');
+  const passwordInput = document.getElementById('passwordInput');
+  const emailSignInBtn = document.getElementById('emailSignInBtn');
+  const emailSignUpBtn = document.getElementById('emailSignUpBtn');
   // Store the initial analysis and page data
   let currentAnalysis = '';
   let currentPageData = null;
@@ -15,6 +21,9 @@ document.addEventListener('DOMContentLoaded', function () {
   saveBtn.addEventListener('click', saveAnalysis);
   settingsBtn.addEventListener('click', openDashboard);
   dashboardBtn.addEventListener('click', openDashboard);
+
+  // Auth UI setup
+  setupAuthUi();
 
   // Recover any in-progress or last results when popup opens
   (async () => {
@@ -74,6 +83,72 @@ document.addEventListener('DOMContentLoaded', function () {
       // Ignore recovery issues
     }
   })();
+  // ===== Supabase Auth (OAuth via new tab + background listener) =====
+  function setupAuthUi() {
+    refreshAuthUi();
+    emailSignInBtn?.addEventListener('click', handleEmailSignIn);
+    emailSignUpBtn?.addEventListener('click', handleEmailSignUp);
+    logoutBtn?.addEventListener('click', handleLogout);
+  }
+
+  async function refreshAuthUi() {
+    try {
+      const sessionObj = await chrome.storage.local.get('session');
+      const isLoggedIn = !!sessionObj.session?.access_token;
+      document.getElementById('logoutBtn').style.display = isLoggedIn ? 'block' : 'none';
+      document.getElementById('emailSignInBtn').disabled = isLoggedIn;
+      document.getElementById('emailSignUpBtn').disabled = isLoggedIn;
+      document.getElementById('emailInput').disabled = isLoggedIn;
+      document.getElementById('passwordInput').disabled = isLoggedIn;
+      if (isLoggedIn) {
+        authStatus.textContent = 'Signed in';
+        authStatus.className = 'status success';
+        authStatus.style.display = 'block';
+      } else {
+        authStatus.textContent = 'Not signed in';
+        authStatus.className = 'status';
+        authStatus.style.display = 'block';
+      }
+    } catch (_) {}
+  }
+
+  async function handleEmailSignIn() {
+    const email = (emailInput?.value || '').trim();
+    const password = (passwordInput?.value || '').trim();
+    if (!email || !password) {
+      showStatus('Enter email and password', 'error');
+      return;
+    }
+    try {
+      await supabaseSignInWithPassword(email, password);
+      showStatus('Signed in', 'success');
+      await refreshAuthUi();
+    } catch (e) {
+      showStatus('Sign-in failed: ' + (e?.message || 'Unknown'), 'error');
+    }
+  }
+
+  async function handleEmailSignUp() {
+    const email = (emailInput?.value || '').trim();
+    const password = (passwordInput?.value || '').trim();
+    if (!email || !password) {
+      showStatus('Enter email and password', 'error');
+      return;
+    }
+    try {
+      await supabaseSignUpWithPassword(email, password);
+      showStatus('Sign-up successful. Check your email to confirm (if required).', 'success');
+      await refreshAuthUi();
+    } catch (e) {
+      showStatus('Sign-up failed: ' + (e?.message || 'Unknown'), 'error');
+    }
+  }
+
+  async function handleLogout() {
+    await supabaseLogout();
+    await refreshAuthUi();
+  }
+
   
 
   async function extractFeatures() {

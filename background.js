@@ -10,6 +10,8 @@ chrome.runtime.onInstalled.addListener(() => {
   
   // Clean up any stale jobs on startup
   cleanupStaleJobs();
+  // Start tab redirect listener for Supabase OAuth
+  setupOAuthListener();
 });
 
 // Clean up jobs older than 10 minutes
@@ -79,8 +81,78 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true; // Keep message channel open for async response
   }
+  
+  if (message?.type === 'supabaseDbInsert') {
+    supabaseDbInsert(message)
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Unknown DB error' }));
+    return true;
+  }
 
 });
+
+// Listen for Supabase OAuth redirect and finalize session
+function setupOAuthListener() {
+  try {
+    chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+      try {
+        if (!changeInfo.url) return;
+        const redirectBase = (chrome && chrome.identity && typeof chrome.identity.getRedirectURL === 'function')
+          ? chrome.identity.getRedirectURL()
+          : `https://${chrome.runtime.id}.chromiumapp.org/`;
+        if (!changeInfo.url.startsWith(redirectBase)) return;
+        await finishUserOAuth(changeInfo.url, tabId);
+      } catch (e) {
+        console.error('OAuth finalize error:', e);
+      }
+    });
+  } catch (e) {
+    console.error('Failed to setup OAuth listener:', e);
+  }
+}
+
+async function finishUserOAuth(url, tabId) {
+  console.log('Handling Supabase OAuth callback...');
+  try {
+    const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+    if (!supabase_url || !supabase_anon_key) throw new Error('Supabase not configured');
+
+    const hash = (new URL(url).hash || '').replace(/^#/, '');
+    const params = new URLSearchParams(hash);
+    const access_token = params.get('access_token');
+    const refresh_token = params.get('refresh_token');
+    if (!access_token || !refresh_token) throw new Error('No Supabase tokens in redirect');
+
+    // Persist session
+    await chrome.storage.local.set({ session: { access_token, refresh_token, expires_at: Math.floor(Date.now()/1000)+3600 } });
+
+    // Optionally fetch user to validate
+    try {
+      const res = await fetch(`${supabase_url}/auth/v1/user`, {
+        headers: {
+          'apikey': supabase_anon_key,
+          'Authorization': `Bearer ${access_token}`
+        }
+      });
+      if (res.ok) {
+        const user = await res.json();
+        await chrome.storage.local.set({ supabase_user: user });
+      }
+    } catch (_) {}
+
+    // Redirect current tab to a friendly page
+    try {
+      await chrome.tabs.update(tabId, { url: 'https://supabase.com/thank-you' });
+    } catch (_) {}
+
+    // Notify popup/UI
+    chrome.runtime.sendMessage({ type: 'authComplete', success: true });
+    console.log('Supabase OAuth complete.');
+  } catch (error) {
+    console.error('finishUserOAuth error:', error);
+    chrome.runtime.sendMessage({ type: 'authComplete', success: false, error: error?.message });
+  }
+}
 
 async function startBackgroundAnalysis(payload) {
   const { tabId, jobId } = payload;
@@ -526,6 +598,29 @@ async function getStoredApiKey() {
     console.error('Error getting API key:', e);
     return null;
   }
+}
+
+// Minimal DB insert via Supabase REST routed through background (avoids CORS in popup)
+async function supabaseDbInsert({ table, rows }) {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  if (!supabase_url || !supabase_anon_key) throw new Error('Supabase not configured');
+  const { session } = await chrome.storage.local.get('session');
+  const token = session?.access_token || supabase_anon_key;
+  const res = await fetch(`${supabase_url}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      apikey: token,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation'
+    },
+    body: JSON.stringify(rows)
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Insert failed: ${res.status} ${txt}`);
+  }
+  return res.json();
 }
 
 async function updateUsageStats() {

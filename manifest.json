@@ -8,7 +8,9 @@
     "storage",
     "scripting",
     "contextMenus",
-    "notifications"
+    "notifications",
+    "tabs",
+    "identity"
   ],
   "host_permissions": [
     "https://*/*",
