@@ -165,3 +165,22 @@ async function supabaseSignUpWithPassword(email, password) {
   }
   return data;
 }
+
+// Send magic link (passwordless) to email
+async function supabaseSendMagicLink(email, redirectUrl) {
+  const cfg = await getSupabaseConfig();
+  if (!cfg.url || !cfg.anonKey) throw new Error('Supabase not configured');
+  const res = await fetch(`${cfg.url}/auth/v1/otp`, {
+    method: 'POST',
+    headers: {
+      apikey: cfg.anonKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ email, create_user: true, type: 'magiclink', redirect_to: redirectUrl })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.msg || data?.error_description || data?.error || 'Failed to send magic link');
+  }
+  return true;
+}

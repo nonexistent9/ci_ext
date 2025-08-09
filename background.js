@@ -117,11 +117,15 @@ async function finishUserOAuth(url, tabId) {
     const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
     if (!supabase_url || !supabase_anon_key) throw new Error('Supabase not configured');
 
-    const hash = (new URL(url).hash || '').replace(/^#/, '');
-    const params = new URLSearchParams(hash);
-    const access_token = params.get('access_token');
-    const refresh_token = params.get('refresh_token');
-    if (!access_token || !refresh_token) throw new Error('No Supabase tokens in redirect');
+    const u = new URL(url);
+    const hash = (u.hash || '').replace(/^#/, '');
+    const params = new URLSearchParams(hash || u.search?.replace(/^\?/, ''));
+    const access_token = params.get('access_token') || params.get('accessToken');
+    const refresh_token = params.get('refresh_token') || params.get('refreshToken');
+    if (!access_token || !refresh_token) {
+      // Not a token-carrying redirect; ignore silently
+      return;
+    }
 
     // Persist session
     await chrome.storage.local.set({ session: { access_token, refresh_token, expires_at: Math.floor(Date.now()/1000)+3600 } });

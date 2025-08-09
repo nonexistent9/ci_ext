@@ -7,11 +7,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const settingsBtn = document.getElementById('settingsBtn');
   const dashboardBtn = document.getElementById('dashboardBtn');
   const authStatus = document.getElementById('authStatus');
-  const logoutBtn = document.getElementById('logoutBtn');
   const emailInput = document.getElementById('emailInput');
-  const passwordInput = document.getElementById('passwordInput');
-  const emailSignInBtn = document.getElementById('emailSignInBtn');
-  const emailSignUpBtn = document.getElementById('emailSignUpBtn');
+  const magicLinkBtn = document.getElementById('magicLinkBtn');
   // Store the initial analysis and page data
   let currentAnalysis = '';
   let currentPageData = null;
@@ -86,20 +83,16 @@ document.addEventListener('DOMContentLoaded', function () {
   // ===== Supabase Auth (OAuth via new tab + background listener) =====
   function setupAuthUi() {
     refreshAuthUi();
-    emailSignInBtn?.addEventListener('click', handleEmailSignIn);
-    emailSignUpBtn?.addEventListener('click', handleEmailSignUp);
-    logoutBtn?.addEventListener('click', handleLogout);
+    magicLinkBtn?.addEventListener('click', handleMagicLink);
   }
 
   async function refreshAuthUi() {
     try {
       const sessionObj = await chrome.storage.local.get('session');
       const isLoggedIn = !!sessionObj.session?.access_token;
-      document.getElementById('logoutBtn').style.display = isLoggedIn ? 'block' : 'none';
-      document.getElementById('emailSignInBtn').disabled = isLoggedIn;
-      document.getElementById('emailSignUpBtn').disabled = isLoggedIn;
-      document.getElementById('emailInput').disabled = isLoggedIn;
-      document.getElementById('passwordInput').disabled = isLoggedIn;
+      const emailField = document.getElementById('emailInput');
+      if (emailField) emailField.disabled = isLoggedIn;
+      if (magicLinkBtn) magicLinkBtn.disabled = isLoggedIn;
       if (isLoggedIn) {
         authStatus.textContent = 'Signed in';
         authStatus.className = 'status success';
@@ -112,35 +105,22 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (_) {}
   }
 
-  async function handleEmailSignIn() {
-    const email = (emailInput?.value || '').trim();
-    const password = (passwordInput?.value || '').trim();
-    if (!email || !password) {
-      showStatus('Enter email and password', 'error');
-      return;
-    }
-    try {
-      await supabaseSignInWithPassword(email, password);
-      showStatus('Signed in', 'success');
-      await refreshAuthUi();
-    } catch (e) {
-      showStatus('Sign-in failed: ' + (e?.message || 'Unknown'), 'error');
-    }
-  }
+  // Removed email/password sign-in and sign-up handlers
 
-  async function handleEmailSignUp() {
+  async function handleMagicLink() {
     const email = (emailInput?.value || '').trim();
-    const password = (passwordInput?.value || '').trim();
-    if (!email || !password) {
-      showStatus('Enter email and password', 'error');
+    if (!email) {
+      showStatus('Enter your email', 'error');
       return;
     }
     try {
-      await supabaseSignUpWithPassword(email, password);
-      showStatus('Sign-up successful. Check your email to confirm (if required).', 'success');
-      await refreshAuthUi();
+      const redirectUrl = (chrome && chrome.identity && typeof chrome.identity.getRedirectURL === 'function')
+        ? chrome.identity.getRedirectURL()
+        : `https://${chrome.runtime.id}.chromiumapp.org/`;
+      await supabaseSendMagicLink(email, redirectUrl);
+      showStatus('Magic link sent. Check your email.', 'success');
     } catch (e) {
-      showStatus('Sign-up failed: ' + (e?.message || 'Unknown'), 'error');
+      showStatus('Failed to send magic link: ' + (e?.message || 'Unknown'), 'error');
     }
   }
 
