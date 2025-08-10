@@ -8,7 +8,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const dashboardBtn = document.getElementById('dashboardBtn');
   const authStatus = document.getElementById('authStatus');
   const emailInput = document.getElementById('emailInput');
-  const magicLinkBtn = document.getElementById('magicLinkBtn');
+  const sendCodeBtn = document.getElementById('sendCodeBtn');
+  const verifyCodeBtn = document.getElementById('verifyCodeBtn');
+  const codeInput = document.getElementById('codeInput');
   // Store the initial analysis and page data
   let currentAnalysis = '';
   let currentPageData = null;
@@ -83,7 +85,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // ===== Supabase Auth (OAuth via new tab + background listener) =====
   function setupAuthUi() {
     refreshAuthUi();
-    magicLinkBtn?.addEventListener('click', handleMagicLink);
+    sendCodeBtn?.addEventListener('click', handleSendCode);
+    verifyCodeBtn?.addEventListener('click', handleVerifyCode);
   }
 
   async function refreshAuthUi() {
@@ -92,7 +95,9 @@ document.addEventListener('DOMContentLoaded', function () {
       const isLoggedIn = !!sessionObj.session?.access_token;
       const emailField = document.getElementById('emailInput');
       if (emailField) emailField.disabled = isLoggedIn;
-      if (magicLinkBtn) magicLinkBtn.disabled = isLoggedIn;
+      if (sendCodeBtn) sendCodeBtn.disabled = isLoggedIn;
+      if (verifyCodeBtn) verifyCodeBtn.disabled = isLoggedIn;
+      if (codeInput) codeInput.disabled = isLoggedIn;
       if (isLoggedIn) {
         authStatus.textContent = 'Signed in';
         authStatus.className = 'status success';
@@ -107,27 +112,43 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Removed email/password sign-in and sign-up handlers
 
-  async function handleMagicLink() {
+  async function handleSendCode() {
     const email = (emailInput?.value || '').trim();
     if (!email) {
       showStatus('Enter your email', 'error');
       return;
     }
     try {
-      const redirectUrl = (chrome && chrome.identity && typeof chrome.identity.getRedirectURL === 'function')
-        ? chrome.identity.getRedirectURL()
-        : `https://${chrome.runtime.id}.chromiumapp.org/`;
-      await supabaseSendMagicLink(email, redirectUrl);
-      showStatus('Magic link sent. Check your email.', 'success');
+      sendCodeBtn.disabled = true;
+      await supabaseSendEmailOtp(email);
+      showStatus('Code sent. Check your email.', 'success');
     } catch (e) {
-      showStatus('Failed to send magic link: ' + (e?.message || 'Unknown'), 'error');
+      showStatus('Failed to send code: ' + (e?.message || 'Unknown'), 'error');
+    } finally {
+      sendCodeBtn.disabled = false;
     }
   }
 
-  async function handleLogout() {
-    await supabaseLogout();
-    await refreshAuthUi();
+  async function handleVerifyCode() {
+    const email = (emailInput?.value || '').trim();
+    const token = (codeInput?.value || '').trim();
+    if (!email || !token) {
+      showStatus('Enter email and 6-digit code', 'error');
+      return;
+    }
+    try {
+      verifyCodeBtn.disabled = true;
+      await supabaseVerifyEmailOtp(email, token);
+      await refreshAuthUi();
+      showStatus('Signed in successfully!', 'success');
+    } catch (e) {
+      showStatus('Verification failed: ' + (e?.message || 'Unknown'), 'error');
+    } finally {
+      verifyCodeBtn.disabled = false;
+    }
   }
+
+  // Logout is handled in the dashboard
 
   
 

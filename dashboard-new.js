@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const threadsPanel = document.getElementById('threadsPanel');
   const threadsList = document.getElementById('threadsList');
   const newThreadBtn = document.getElementById('newThreadBtn');
+  const dashboardLogoutBtn = document.getElementById('dashboardLogoutBtn');
   
   // Navigation
   const navItems = document.querySelectorAll('.nav-item');
@@ -108,6 +109,72 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   if (newThreadBtn) {
     newThreadBtn.addEventListener('click', () => createNewThread());
+  }
+  if (dashboardLogoutBtn) {
+    dashboardLogoutBtn.addEventListener('click', async () => {
+      const loggedIn = await isLoggedIn();
+      if (loggedIn) {
+        try {
+          await supabaseLogout();
+          showStatusMessage('Signed out', 'success');
+        } catch (e) {
+          showStatusMessage('Error during logout: ' + (e?.message || 'Unknown'), 'error');
+        } finally {
+          refreshAuthControls();
+        }
+      } else {
+        await handleDashboardLogin();
+      }
+    });
+    // Initialize button state
+    refreshAuthControls();
+    // React to session changes
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.session) refreshAuthControls();
+    });
+  }
+
+  async function isLoggedIn() {
+    try {
+      const { session } = await chrome.storage.local.get('session');
+      return !!session?.access_token;
+    } catch (_) { return false; }
+  }
+
+  async function refreshAuthControls() {
+    const loggedIn = await isLoggedIn();
+    if (!dashboardLogoutBtn) return;
+    dashboardLogoutBtn.textContent = loggedIn ? 'Log out' : 'Log in';
+    // swap classes for visual cue
+    dashboardLogoutBtn.classList.remove('btn-destructive', 'btn-primary');
+    dashboardLogoutBtn.classList.add(loggedIn ? 'btn-destructive' : 'btn-primary');
+  }
+
+  async function handleDashboardLogin() {
+    // Minimal inline login using prompts to avoid heavy UI changes
+    const email = prompt('Enter your email to receive a login code:');
+    if (!email) {
+      showStatusMessage('Email is required to log in', 'error');
+      return;
+    }
+    try {
+      await supabaseSendEmailOtp(email.trim());
+    } catch (e) {
+      showStatusMessage('Failed to send code: ' + (e?.message || 'Unknown'), 'error');
+      return;
+    }
+    const token = prompt('Enter the 6-digit code sent to your email:');
+    if (!token) {
+      showStatusMessage('Verification code is required', 'error');
+      return;
+    }
+    try {
+      await supabaseVerifyEmailOtp(email.trim(), token.trim());
+      showStatusMessage('Signed in successfully', 'success');
+      refreshAuthControls();
+    } catch (e) {
+      showStatusMessage('Verification failed: ' + (e?.message || 'Unknown'), 'error');
+    }
   }
   
   // Sidebar event listeners

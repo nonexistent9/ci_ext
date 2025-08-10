@@ -189,6 +189,52 @@ async function supabaseSendMagicLink(email, redirectUrl) {
   return true;
 }
 
+// Send a one-time passcode (OTP) to the user's email
+async function supabaseSendEmailOtp(email) {
+  const cfg = await getSupabaseConfig();
+  if (!cfg.url || !cfg.anonKey) throw new Error('Supabase not configured');
+  // Sending to /otp will trigger the email template. To use a numeric code instead
+  // of a magic link, ensure your Supabase "Magic Link" template includes {{ .Token }}.
+  const res = await fetch(`${cfg.url}/auth/v1/otp`, {
+    method: 'POST',
+    headers: {
+      apikey: cfg.anonKey,
+      'Content-Type': 'application/json'
+    },
+    // create_user: true mirrors supabase-js default; omit redirect_to for code flow
+    body: JSON.stringify({ email, create_user: true })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.msg || data?.error_description || data?.error || 'Failed to send code');
+  }
+  return true;
+}
+
+// Verify email OTP and establish a session
+async function supabaseVerifyEmailOtp(email, token) {
+  const cfg = await getSupabaseConfig();
+  if (!cfg.url || !cfg.anonKey) throw new Error('Supabase not configured');
+  const res = await fetch(`${cfg.url}/auth/v1/verify`, {
+    method: 'POST',
+    headers: {
+      apikey: cfg.anonKey,
+      'Content-Type': 'application/json'
+    },
+    // Include verification type in the body as required by the API
+    body: JSON.stringify({ type: 'email', email, token })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.msg || data?.error_description || data?.error || 'Invalid or expired code');
+  }
+  if (!data.access_token || !data.refresh_token) {
+    throw new Error('No session returned from verification');
+  }
+  await supabaseSetSession({ access_token: data.access_token, refresh_token: data.refresh_token });
+  return data;
+}
+
 // -------- Analysis Storage Functions --------
 
 // Save analysis to Supabase database

@@ -55,6 +55,8 @@
       border-right: 1px solid hsl(var(--border));
       padding: 24px 0;
       flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
     }
     
     .sidebar-header {
@@ -76,6 +78,13 @@
     
     .sidebar-nav {
       padding: 24px 16px;
+      flex: 1 1 auto;
+    }
+    
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 16px;
+      border-top: 1px solid hsl(var(--border));
     }
     
     .nav-section {
@@ -784,6 +793,9 @@
         
         
       </nav>
+      <div class="sidebar-footer">
+        <button id="dashboardLogoutBtn" class="btn btn-destructive btn-sm" style="width:100%;">Log out</button>
+      </div>
     </div>
     
     <!-- Main Content -->
@@ -1034,6 +1046,7 @@
     </div>
   </div>
 
+  <script src="config.js"></script>
   <script src="dashboard-new.js"></script>
 </body>
 </html>
