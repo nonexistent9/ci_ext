@@ -48,6 +48,9 @@ chrome.notifications?.onClicked.addListener(() => {
 });
 
 // Listen for long-running analysis requests so work continues even if popup closes
+// Track active stream controllers by requestId for cancellation
+const streamControllers = new Map();
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Background received message:', message.type);
   
@@ -80,6 +83,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: error?.message || 'Unknown error' });
       });
     return true; // Keep message channel open for async response
+  }
+  if (message?.type === 'aiChatStream') {
+    if (message.stop && message.requestId && streamControllers.has(message.requestId)) {
+      try { streamControllers.get(message.requestId).abort(); } catch (_) {}
+      streamControllers.delete(message.requestId);
+      chrome.runtime.sendMessage({ type: 'aiChatStreamAborted', requestId: message.requestId });
+      sendResponse({ success: true });
+      return true;
+    }
+    // Streaming SSE style using fetch with ReadableStream
+    handleAiChatStream(message)
+      .then(() => {})
+      .catch((error) => {
+        chrome.runtime.sendMessage({ type: 'aiChatStreamError', requestId: message.requestId, error: error?.message || 'Unknown error' });
+      });
+    sendResponse({ success: true });
+    return true;
+  }
+  if (message?.type === 'chatSaveTurn') {
+    saveChatTurnBackground(message)
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to save chat' }));
+    return true;
+  }
+  if (message?.type === 'chatLoadThread') {
+    loadChatThreadBackground()
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to load chat' }));
+    return true;
+  }
+  if (message?.type === 'chatResetThread') {
+    chrome.storage.local.remove('chat_thread_id').then(() => sendResponse({ success: true }));
+    return true;
   }
   
   if (message?.type === 'supabaseDbInsert') {
@@ -350,7 +386,14 @@ async function handleAiChat(payload) {
   // If no documents are referenced, try to find relevant documents automatically
   let docsToAnalyze = referencedDocs;
   if (!referencedDocs || referencedDocs.length === 0) {
-    docsToAnalyze = await findRelevantDocuments(message);
+    // Prefer Supabase-backed retrieval per authenticated user; fallback to local
+    const { session } = await chrome.storage.local.get('session');
+    if (session?.access_token) {
+      docsToAnalyze = await findRelevantDocumentsSupabase(message).catch(() => []);
+    }
+    if (!docsToAnalyze || docsToAnalyze.length === 0) {
+      docsToAnalyze = await findRelevantDocumentsLocal(message);
+    }
   }
   
   // Get user preferences and custom prompts for chat
@@ -567,7 +610,107 @@ Please relate your response to my specific company situation.`;
   return data.choices?.[0]?.message?.content || 'No response generated';
 }
 
-async function findRelevantDocuments(query) {
+// Streaming variant: emits tokens via runtime.sendMessage events
+async function handleAiChatStream(payload) {
+  const { message, referencedDocs, conversationHistory, requestId } = payload;
+  const apiKey = await getStoredApiKey();
+  if (!apiKey) throw new Error('OpenAI API key not found. Please set your API key.');
+  await updateUsageStats();
+  let docsToAnalyze = referencedDocs;
+  if (!referencedDocs || referencedDocs.length === 0) {
+    const { session } = await chrome.storage.local.get('session');
+    if (session?.access_token) {
+      docsToAnalyze = await findRelevantDocumentsSupabase(message).catch(() => []);
+    }
+    if (!docsToAnalyze || docsToAnalyze.length === 0) {
+      docsToAnalyze = await findRelevantDocumentsLocal(message);
+    }
+  }
+  const companyContext = await getCompanyContext();
+  const customPrompts = await getCustomPrompts();
+  const analysisPreferences = await getAnalysisPreferences();
+  let documentContext = '';
+  if (docsToAnalyze && docsToAnalyze.length > 0) {
+    documentContext = '\n\n=== REFERENCED DOCUMENTS FOR ANALYSIS ===\n';
+    docsToAnalyze.forEach((doc, index) => {
+      documentContext += `\n--- DOCUMENT ${index + 1}: "${doc.title}" ---\n`;
+      documentContext += `• Company/Source: ${doc.domain}\n`;
+      documentContext += `• URL: ${doc.url}\n`;
+      documentContext += `• Analysis Type: ${doc.type.toUpperCase()}\n`;
+      documentContext += `• Date Analyzed: ${new Date(doc.timestamp).toLocaleDateString()}\n`;
+      const content = doc.content || '';
+      const maxContentLength = 3000;
+      if (content.length <= maxContentLength) {
+        documentContext += `• Full Analysis Content:\n\n${content}\n\n`;
+      } else {
+        const chunks = chunkContent(content, message, maxContentLength);
+        documentContext += `• Relevant Content Sections:\n\n${chunks}\n\n`;
+      }
+      documentContext += `--- END OF DOCUMENT ${index + 1} ---\n\n`;
+    });
+  }
+  let systemPrompt = `You are an expert competitive intelligence analyst. Provide concise, well-structured insights grounded in the provided documents and the user's company context.`;
+  if (analysisPreferences) {
+    systemPrompt += `\n\nUSER PREFERENCES:`;
+    if (analysisPreferences.includeActionableInsights) systemPrompt += `\n- Include actionable recommendations`;
+    if (analysisPreferences.focusOnDifferentiators) systemPrompt += `\n- Emphasize differentiators`;
+    if (analysisPreferences.includeMarketContext) systemPrompt += `\n- Include market context when relevant`;
+    if (analysisPreferences.prioritizeThreats) systemPrompt += `\n- Prioritize threats and opportunities`;
+  }
+  if (customPrompts) systemPrompt += `\n\nCUSTOM INSTRUCTIONS:\n${customPrompts}`;
+  const messages = [ { role: 'system', content: systemPrompt }, ...conversationHistory.slice(-10) ];
+  let current = message + (documentContext || '');
+  if (companyContext) current += `\n\nREMEMBER: My company context is: ${companyContext}`;
+  messages.push({ role: 'user', content: current });
+
+  const controller = new AbortController();
+  if (requestId) {
+    try { streamControllers.set(requestId, controller); } catch (_) {}
+  }
+  const model = await getInitialModel();
+  // Notify UI how to stop this stream
+  chrome.runtime.sendMessage({ type: 'aiChatStreamStart', requestId });
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages, max_tokens: 1500, temperature: 0.6, stream: true }),
+      signal: controller.signal
+    });
+    if (!res.ok || !res.body) throw new Error(`OpenAI error ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let full = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      // SSE: lines starting with data:
+      const lines = chunk.split('\n').filter(Boolean);
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const data = line.replace(/^data:\s*/, '').trim();
+        if (data === '[DONE]') break;
+        try {
+          const json = JSON.parse(data);
+          const token = json.choices?.[0]?.delta?.content || '';
+          if (token) {
+            full += token;
+            chrome.runtime.sendMessage({ type: 'aiChatStreamChunk', requestId, token });
+          }
+        } catch (_) { /* ignore non-json keepalive */ }
+      }
+    }
+    chrome.runtime.sendMessage({ type: 'aiChatStreamEnd', requestId, full });
+  } catch (e) {
+    chrome.runtime.sendMessage({ type: 'aiChatStreamError', requestId, error: e?.message || 'Stream failed' });
+  }
+  if (requestId) {
+    try { streamControllers.delete(requestId); } catch (_) {}
+  }
+}
+
+async function findRelevantDocumentsLocal(query) {
   try {
     const result = await chrome.storage.sync.get(['saved_analyses']);
     const allDocs = result.saved_analyses || [];
@@ -606,6 +749,66 @@ async function findRelevantDocuments(query) {
     console.error('Error finding relevant documents:', error);
     return [];
   }
+}
+
+// Prefer per-user retrieval from Supabase using the user's session (isolation via bearer + optional user_id filter)
+async function findRelevantDocumentsSupabase(query) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return [];
+    const analyses = await getUserAnalysesBackground({ limit: 100, orderBy: 'created_at', order: 'desc', userId: user.id });
+    if (!Array.isArray(analyses) || analyses.length === 0) return [];
+    const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    const scored = analyses.map(a => {
+      let score = 0;
+      const hay = `${a.title || ''} ${a.content || ''} ${a.domain || ''}`.toLowerCase();
+      keywords.forEach(k => {
+        if ((a.title || '').toLowerCase().includes(k)) score += 5;
+        if ((a.domain || '').toLowerCase().includes(k)) score += 3;
+        const matches = (hay.match(new RegExp(k, 'g')) || []).length;
+        score += matches;
+      });
+      return { a, score };
+    });
+    const top = scored
+      .filter(x => x.score > 0)
+      .sort((x, y) => y.score - x.score)
+      .slice(0, 5)
+      .map(x => x.a)
+      .map(a => ({
+        id: a.id,
+        title: a.title,
+        domain: a.domain,
+        url: a.url,
+        content: a.content,
+        type: a.analysis_type,
+        timestamp: a.created_at
+      }));
+    return top;
+  } catch (e) {
+    console.warn('findRelevantDocumentsSupabase failed:', e?.message || e);
+    return [];
+  }
+}
+
+async function getCurrentUser() {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
+  const { session, supabase_user } = await chrome.storage.local.get(['session', 'supabase_user']);
+  if (supabase_user?.id) return supabase_user;
+  if (!session?.access_token) return null;
+  try {
+    const res = await fetch(`${effectiveUrl}/auth/v1/user`, {
+      headers: { 'apikey': effectiveAnon, 'Authorization': `Bearer ${session.access_token}` }
+    });
+    if (!res.ok) return null;
+    const user = await res.json();
+    await chrome.storage.local.set({ supabase_user: user });
+    return user;
+  } catch (_) { return null; }
 }
 
 function chunkContent(content, query, maxLength) {
@@ -867,6 +1070,9 @@ async function getUserAnalysesBackground(options = {}) {
   }
   
   // Filtering
+  if (options.userId) {
+    queryParams.append('user_id', `eq.${options.userId}`);
+  }
   if (options.domain) {
     queryParams.append('domain', `eq.${options.domain}`);
   }
@@ -900,6 +1106,63 @@ async function getUserAnalysesBackground(options = {}) {
   }
 
   return await res.json();
+}
+
+// --- Chat persistence (per-user) ---
+async function saveChatTurnBackground({ role, content }) {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
+  const { session } = await chrome.storage.local.get(['session', 'chat_thread_id']);
+  const token = session?.access_token;
+  if (!effectiveUrl || !effectiveAnon || !token) throw new Error('Not authenticated');
+  const user = await getCurrentUser();
+  if (!user?.id) throw new Error('User not available');
+
+  // Ensure a chat thread exists (chat_threads)
+  let threadId = (await chrome.storage.local.get('chat_thread_id'))?.chat_thread_id;
+  if (!threadId) {
+    // Create thread named "AI Insights Chat"
+    const res = await fetch(`${effectiveUrl}/rest/v1/chat_threads`, {
+      method: 'POST',
+      headers: { 'apikey': effectiveAnon, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify({ name: 'AI Insights Chat', user_id: user.id })
+    });
+    if (!res.ok) throw new Error('Failed to create chat thread');
+    const created = await res.json();
+    threadId = created[0]?.id;
+    await chrome.storage.local.set({ chat_thread_id: threadId });
+  }
+
+  // Insert into chat_messages
+  const payload = { role, content, thread_id: threadId, user_id: user.id };
+  const resIns = await fetch(`${effectiveUrl}/rest/v1/chat_messages`, {
+    method: 'POST',
+    headers: { 'apikey': effectiveAnon, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify(payload)
+  });
+  if (!resIns.ok) throw new Error('Failed to save chat message');
+  const saved = await resIns.json();
+  return { threadId, messageId: saved[0]?.id };
+}
+
+async function loadChatThreadBackground() {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
+  const { session, chat_thread_id } = await chrome.storage.local.get(['session', 'chat_thread_id']);
+  if (!session?.access_token) throw new Error('Not authenticated');
+  if (!chat_thread_id) return [];
+  // Pull chat messages for this thread id
+  const url = `${effectiveUrl}/rest/v1/chat_messages?thread_id=eq.${chat_thread_id}&order=created_at.asc`;
+  const res = await fetch(url, { headers: { 'apikey': effectiveAnon, 'Authorization': `Bearer ${session.access_token}` } });
+  if (!res.ok) throw new Error('Failed to load chat');
+  const rows = await res.json();
+  return rows.map(r => ({ role: r.role, content: r.content, created_at: r.created_at }));
 }
 
 // Update analysis in Supabase from background

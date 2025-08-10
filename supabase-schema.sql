@@ -150,3 +150,56 @@ GRANT ALL ON analyses TO authenticated;
 GRANT ALL ON analysis_sessions TO authenticated;
 GRANT ALL ON session_analyses TO authenticated;
 GRANT SELECT ON user_analysis_summary TO authenticated;
+
+-- =====================
+-- Chat storage (dedicated)
+-- =====================
+
+-- Threads
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Messages
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  thread_id UUID REFERENCES chat_threads(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user','assistant','system')),
+  content TEXT NOT NULL,
+  metadata JSONB,
+  model_used TEXT,
+  token_count INTEGER,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- RLS
+ALTER TABLE chat_threads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "read own chat threads" ON chat_threads
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY IF NOT EXISTS "insert own chat threads" ON chat_threads
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY IF NOT EXISTS "update own chat threads" ON chat_threads
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY IF NOT EXISTS "delete own chat threads" ON chat_threads
+  FOR DELETE USING (auth.uid() = user_id);
+
+CREATE POLICY IF NOT EXISTS "read own chat messages" ON chat_messages
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY IF NOT EXISTS "insert own chat messages" ON chat_messages
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY IF NOT EXISTS "delete own chat messages" ON chat_messages
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id, created_at);
+
+-- Grants
+GRANT ALL ON chat_threads TO authenticated;
+GRANT ALL ON chat_messages TO authenticated;

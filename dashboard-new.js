@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const mentionDropdown = document.getElementById('mentionDropdown');
   const chatMessages = document.getElementById('chatMessages');
   const clearChatBtn = document.getElementById('clearChatBtn');
+  const starterPrompts = document.getElementById('starterPrompts');
   
   // Navigation
   const navItems = document.querySelectorAll('.nav-item');
@@ -85,6 +86,23 @@ document.addEventListener('DOMContentLoaded', function() {
   if (chatInput) chatInput.addEventListener('input', handleChatInput);
   if (chatInput) chatInput.addEventListener('keydown', handleChatKeydown);
   if (clearChatBtn) clearChatBtn.addEventListener('click', clearChat);
+  const stopStreamBtn = document.getElementById('stopStreamBtn');
+  if (stopStreamBtn) {
+    stopStreamBtn.addEventListener('click', () => {
+      if (currentStreamId) {
+        chrome.runtime.sendMessage({ type: 'aiChatStream', stop: true, requestId: currentStreamId });
+      }
+    });
+  }
+  if (starterPrompts) {
+    starterPrompts.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-prompt]');
+      if (!btn || !chatInput) return;
+      chatInput.value = btn.dataset.prompt || '';
+      chatInput.focus();
+      updateSendButtonState();
+    });
+  }
   
   // Sidebar event listeners
   closeSidebar.addEventListener('click', closeSidebarPanel);
@@ -108,6 +126,22 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update active state
         navItems.forEach(nav => nav.classList.remove('active'));
         item.classList.add('active');
+        if (targetPage === 'insights') {
+          // On first open, try to load past thread messages
+          if (chatMessages && chatMessages.dataset.loaded !== '1') {
+            chrome.runtime.sendMessage({ type: 'chatLoadThread' }, (resp) => {
+              if (resp && resp.success && Array.isArray(resp.result) && resp.result.length) {
+                // Render existing messages quickly
+                resp.result.forEach(m => {
+                  if (m.role === 'user') addUserMessage(m.content);
+                  else addAiMessage(m.content);
+                  conversationHistory.push({ role: m.role, content: m.content });
+                });
+              }
+              if (chatMessages) chatMessages.dataset.loaded = '1';
+            });
+          }
+        }
       });
     });
   }
@@ -309,6 +343,7 @@ document.addEventListener('DOMContentLoaded', function() {
   let selectedMentionIndex = -1;
   let currentMentions = [];
   let conversationHistory = [];
+  let currentStreamId = null;
   
   async function sendMessage() {
     const message = chatInput.value.trim();
@@ -317,44 +352,33 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       // Add user message to chat
       addUserMessage(message);
+      // persist user turn
+      chrome.runtime.sendMessage({ type: 'chatSaveTurn', role: 'user', content: message });
       
       // Clear input and disable send button
       chatInput.value = '';
       updateSendButtonState();
       
-      // Show typing indicator
-      const typingIndicator = addTypingIndicator();
-      
       const referencedDocs = extractMentions(message);
       const apiKey = await getStoredApiKey();
-      
       if (!apiKey) {
-        removeTypingIndicator(typingIndicator);
         addAiMessage('Please set your OpenAI API key in the settings first.');
         return;
       }
-      
-      // Send message to background script with conversation history
-      const response = await chrome.runtime.sendMessage({
-        type: 'aiChat',
+
+      // Start streaming
+      const requestId = 'stream_' + Date.now();
+      currentStreamId = requestId;
+      toggleStreamingUI(true);
+      addAiStreamMessageStart();
+
+      chrome.runtime.sendMessage({
+        type: 'aiChatStream',
         message: message,
         referencedDocs: referencedDocs,
-        conversationHistory: conversationHistory
+        conversationHistory: conversationHistory,
+        requestId
       });
-      
-      // Remove typing indicator
-      removeTypingIndicator(typingIndicator);
-      
-      if (response.success) {
-        addAiMessage(response.result);
-        // Add to conversation history
-        conversationHistory.push(
-          { role: 'user', content: message },
-          { role: 'assistant', content: response.result }
-        );
-      } else {
-        addAiMessage('Sorry, I encountered an error: ' + response.error);
-      }
       
     } catch (error) {
       console.error('Chat error:', error);
@@ -380,12 +404,46 @@ document.addEventListener('DOMContentLoaded', function() {
     messageDiv.className = 'ai-message';
     messageDiv.innerHTML = `
       <div class="message-avatar">🤖</div>
-      <div class="message-content">
-        <p>${escapeHtml(message).replace(/\n/g, '</p><p>')}</p>
-      </div>
+      <div class="message-content">${renderMarkdownSafe(message)}</div>
     `;
     chatMessages.appendChild(messageDiv);
     scrollToBottom();
+  }
+
+  // Streaming rendering
+  let liveMessageContainer = null;
+  let liveMessageWrapper = null;
+  function addAiStreamMessageStart() {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'ai-message';
+    messageDiv.innerHTML = `
+      <div class="message-avatar">🤖</div>
+      <div class="message-content"><p id="liveMessage"></p></div>
+    `;
+    chatMessages.appendChild(messageDiv);
+    liveMessageContainer = messageDiv.querySelector('#liveMessage');
+    liveMessageWrapper = messageDiv.querySelector('.message-content');
+    scrollToBottom();
+  }
+  function appendAiStreamToken(token) {
+    if (!liveMessageContainer) return;
+    liveMessageContainer.textContent += token;
+    scrollToBottom();
+  }
+  function finalizeAiStream(full) {
+    toggleStreamingUI(false);
+    if (liveMessageWrapper) {
+      liveMessageWrapper.innerHTML = renderMarkdownSafe(full);
+    }
+    liveMessageContainer = null;
+    liveMessageWrapper = null;
+    // Add to conversation history last user prompt already added earlier
+    conversationHistory.push({ role: 'assistant', content: full });
+  }
+  function toggleStreamingUI(isStreaming) {
+    const stopBtn = document.getElementById('stopStreamBtn');
+    if (!stopBtn) return;
+    stopBtn.style.display = isStreaming ? 'inline-flex' : 'none';
   }
   
   function addTypingIndicator() {
@@ -472,6 +530,68 @@ document.addEventListener('DOMContentLoaded', function() {
     const hasMessage = chatInput.value.trim().length > 0;
     sendBtn.disabled = !hasMessage;
   }
+
+  // Lightweight safe Markdown renderer for chat bubbles
+  function renderMarkdownSafe(markdown) {
+    if (!markdown) return '';
+    const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
+    let html = '';
+    let inUl = false;
+    let inOl = false;
+    let inP = false;
+    let inCode = false;
+    let codeBuffer = [];
+    const flushP = () => { if (inP) { html += '</p>'; inP = false; } };
+    const openUl = () => { if (!inUl) { flushP(); html += '<ul>'; inUl = true; } };
+    const closeUl = () => { if (inUl) { html += '</ul>'; inUl = false; } };
+    const openOl = () => { if (!inOl) { flushP(); html += '<ol>'; inOl = true; } };
+    const closeOl = () => { if (inOl) { html += '</ol>'; inOl = false; } };
+    const flushCode = () => {
+      if (inCode) {
+        html += `<pre><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`;
+        codeBuffer = [];
+        inCode = false;
+      }
+    };
+    const renderInline = (text) => {
+      let t = escapeHtml(text);
+      t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
+      return t;
+    };
+    for (const raw of lines) {
+      const line = raw;
+      if (line.trim().startsWith('```')) {
+        if (!inCode) { flushP(); closeUl(); closeOl(); inCode = true; codeBuffer = []; continue; }
+        else { flushCode(); continue; }
+      }
+      if (inCode) { codeBuffer.push(line); continue; }
+      if (line.trim() === '') { flushP(); closeUl(); closeOl(); continue; }
+      const hMatch = line.match(/^(#{1,6})\s+(.*)$/);
+      if (hMatch) {
+        flushP(); closeUl(); closeOl();
+        const level = Math.min(hMatch[1].length, 4);
+        html += `<h${level}>${renderInline(hMatch[2])}</h${level}>`;
+        continue;
+      }
+      if (/^\d+\.\s+/.test(line)) {
+        openOl(); closeUl();
+        const content = line.replace(/^\d+\.\s+/, '');
+        html += `<li>${renderInline(content)}</li>`;
+        continue;
+      }
+      if (/^[-*]\s+/.test(line)) {
+        openUl(); closeOl();
+        const content = line.replace(/^[-*]\s+/, '');
+        html += `<li>${renderInline(content)}</li>`;
+        continue;
+      }
+      if (!inP) { html += '<p>'; inP = true; }
+      html += `${renderInline(line)} `;
+    }
+    flushCode(); flushP(); closeUl(); closeOl();
+    return html;
+  }
   
   async function showMentionDropdown(searchText) {
     if (availableDocuments.length === 0) {
@@ -508,6 +628,31 @@ document.addEventListener('DOMContentLoaded', function() {
     
     mentionDropdown.style.display = 'block';
   }
+
+  // Listen for streaming events
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!msg || !msg.type) return;
+    if (msg.type === 'aiChatStreamStart') {
+      // nothing to do, already started
+    } else if (msg.type === 'aiChatStreamChunk') {
+      appendAiStreamToken(msg.token || '');
+    } else if (msg.type === 'aiChatStreamEnd') {
+      finalizeAiStream(msg.full || '');
+      // persist assistant turn
+      if (msg.full) {
+        chrome.runtime.sendMessage({ type: 'chatSaveTurn', role: 'assistant', content: msg.full });
+      }
+      currentStreamId = null;
+    } else if (msg.type === 'aiChatStreamError') {
+      toggleStreamingUI(false);
+      currentStreamId = null;
+      addAiMessage('Stream error: ' + (msg.error || 'Unknown'));
+    } else if (msg.type === 'aiChatStreamAborted') {
+      toggleStreamingUI(false);
+      currentStreamId = null;
+      addAiMessage('Stopped.');
+    }
+  });
   
   function hideMentionDropdown() {
     mentionDropdown.style.display = 'none';
