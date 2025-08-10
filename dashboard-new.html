@@ -767,6 +767,12 @@
             </svg>
             Saved Analyses
           </div>
+          <div class="nav-item" data-page="insights">
+            <svg class="nav-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7H7v6m0 0l3.5-3.5M7 13l-3.5 3.5M21 13a8 8 0 11-16 0 8 8 0 0116 0z" />
+            </svg>
+            AI Insights
+          </div>
           <div class="nav-item" data-page="settings">
             <svg class="nav-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
@@ -776,15 +782,7 @@
           </div>
         </div>
         
-        <div class="nav-section">
-          <div class="nav-section-title">Analytics</div>
-          <div class="nav-item" data-page="usage">
-            <svg class="nav-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-            </svg>
-            Usage Stats
-          </div>
-        </div>
+        
       </nav>
     </div>
     
@@ -798,48 +796,32 @@
         </div>
         
         <div class="content-body">
-          <!-- AI Chat Section -->
-          <div class="chat-section">
-            <div class="chat-header">
-              <h3>AI Analysis Chat</h3>
-              <button id="clearChatBtn" class="btn btn-secondary btn-sm">Clear Chat</button>
+          <!-- Competitors + Controls -->
+          <div class="card" id="analysisControls">
+            <div class="card-header">
+              <h2 class="card-title">Browse Analyses</h2>
+              <p class="card-description">Search, filter, and manage your saved analyses</p>
             </div>
-            
-            <!-- Chat Messages -->
-            <div id="chatMessages" class="chat-messages">
-              <div class="welcome-message">
-                <div class="ai-message">
-                  <div class="message-avatar">🤖</div>
-                  <div class="message-content">
-                    <p>Hello! I can help you analyze your competitive intelligence data. Ask me questions about your saved analyses or reference specific documents using @.</p>
-                    <p><strong>Try asking:</strong></p>
-                    <ul>
-                      <li>"What are the key trends across my saved analyses?"</li>
-                      <li>"Compare the pricing strategies between @[Document 1] and @[Document 2]"</li>
-                      <li>"What features does @[Competitor Analysis] highlight?"</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+              <input id="analysisSearchInput" class="input" style="flex: 1; min-width: 260px;" placeholder="Search by title, domain, or content">
+              <select id="analysisTypeFilter" class="select" style="min-width: 200px;">
+                <option value="all">All types</option>
+                <option value="feature">Feature Extraction</option>
+                <option value="pricing">Pricing Analysis</option>
+                <option value="general">General</option>
+              </select>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: hsl(var(--muted-foreground));">
+                <input type="checkbox" id="favoritesOnly" style="margin: 0;"> Favorites only
+              </label>
             </div>
-            
-            <!-- Chat Input -->
-            <div class="chat-input-section">
-              <div class="chat-input-wrapper">
-                <textarea 
-                  id="chatInput" 
-                  class="chat-input" 
-                  placeholder="Ask questions about your analyses... Use @ to reference documents"
-                  rows="2"
-                ></textarea>
-                <div class="mention-dropdown" id="mentionDropdown" style="display: none;"></div>
-              </div>
-              <button id="sendBtn" class="send-btn" disabled>
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                </svg>
-              </button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Competitors Tracked</h2>
+              <p class="card-description">Unique domains and counts from your saved analyses</p>
             </div>
+            <div id="competitorsContainer" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
           </div>
           
           
@@ -854,6 +836,74 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- AI Insights Page -->
+      <div id="insights-page" class="page hidden">
+        <div class="content-header">
+          <h1 class="page-title">AI Insights</h1>
+          <p class="page-description">Chat with an AI grounded in your saved analyses. Use @ to reference specific documents.</p>
+        </div>
+        <div class="content-body">
+          <div style="display:flex; gap:16px; align-items:stretch;">
+            <!-- Threads Panel -->
+            <div class="card" id="threadsPanel" style="width: 280px; flex-shrink:0; display:flex; flex-direction:column;">
+              <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <h2 class="card-title" style="margin:0;">Your Chats</h2>
+                <button id="newThreadBtn" class="btn btn-primary btn-sm">New Chat</button>
+              </div>
+              <div id="threadsList" style="overflow:auto;">
+                <!-- Filled dynamically -->
+              </div>
+            </div>
+
+            <!-- Chat Panel -->
+            <div class="card" id="aiInsightsCard" style="flex:1;">
+            <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <h2 class="card-title">Ask about your competitive landscape</h2>
+                <p class="card-description">Starter prompts below populate the input. Edit before sending.</p>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button id="clearChatBtn" class="btn btn-secondary btn-sm">Clear</button>
+                <button id="stopStreamBtn" class="btn btn-destructive btn-sm" style="display:none;">Stop</button>
+              </div>
+            </div>
+
+            <div id="starterPrompts" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 12px;">
+              <button class="btn btn-secondary btn-sm" data-prompt="Prepare an executive brief summarizing key competitors, differentiators, pricing approaches, and recent moves based on my saved analyses.">Executive brief</button>
+              <button class="btn btn-secondary btn-sm" data-prompt="Create a sales battlecard highlighting strengths, weaknesses, landmines, and trap-setting questions using my saved analyses.">Create battlecard</button>
+              <button class="btn btn-secondary btn-sm" data-prompt="Help me prep for a customer call: list tailored talking points, discovery questions, and objection handling using insights from my saved analyses.">Prep for customer call</button>
+              <button class="btn btn-secondary btn-sm" data-prompt="Compare pricing strategies and packaging across my top competitors, calling out major differences and risks.">Pricing comparison</button>
+              <button class="btn btn-secondary btn-sm" data-prompt="Identify common feature gaps and opportunities across competitors in my saved analyses.">Feature gap analysis</button>
+            </div>
+
+            <div id="chatMessages" class="chat-messages" style="max-height: 420px;">
+              <div class="welcome-message">
+                <div class="ai-message">
+                  <div class="message-avatar">🤖</div>
+                  <div class="message-content">
+                    <p>Ask me anything about your saved analyses. I’ll reference your data and company context to provide insights.</p>
+                    <p><strong>Tip</strong>: Use <code>@</code> to cite specific analyses, e.g., "Compare pricing across @[Linear] and @[Zoho]".</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chat-input-section" style="margin-top: 12px;">
+              <div class="chat-input-wrapper">
+                <textarea id="chatInput" class="chat-input" placeholder="Ask questions about your analyses... Use @ to reference documents" rows="3"></textarea>
+                <div class="mention-dropdown" id="mentionDropdown" style="display: none;"></div>
+              </div>
+              <button id="sendBtn" class="send-btn" disabled>
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
       
       <!-- Settings Page -->
@@ -888,22 +938,7 @@
             <div id="status" class="hidden" style="margin-top: 12px; padding: 12px; border-radius: var(--radius);"></div>
           </div>
 
-          <!-- Supabase Settings -->
-          <div class="card">
-            <div class="card-header">
-              <h2 class="card-title">Supabase Settings</h2>
-              <p class="card-description">Configure Supabase URL and anon key for OAuth and database</p>
-            </div>
-            <div class="form-group">
-              <label for="supabaseUrl" class="label">Supabase URL</label>
-              <input type="text" id="supabaseUrl" class="input" placeholder="https://YOUR-PROJECT.supabase.co">
-            </div>
-            <div class="form-group">
-              <label for="supabaseAnonKey" class="label">Supabase anon key</label>
-              <input type="password" id="supabaseAnonKey" class="input" placeholder="Paste anon key">
-            </div>
-            <button id="saveSupabaseBtn" class="btn btn-primary">Save Supabase Settings</button>
-          </div>
+          
           
           <!-- Model Settings -->
           <div class="card">
@@ -968,30 +1003,7 @@
         </div>
       </div>
       
-      <!-- Usage Stats Page -->
-      <div id="usage-page" class="page hidden">
-        <div class="content-header">
-          <h1 class="page-title">Usage Statistics</h1>
-          <p class="page-description">Monitor your API usage and activity</p>
-        </div>
-        
-        <div class="content-body">
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-label">API Calls Today</div>
-              <div class="stat-value" id="apiCallsToday">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Total API Calls</div>
-              <div class="stat-value" id="apiCallsTotal">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Last Used</div>
-              <div class="stat-value" id="lastUsed" style="font-size: 16px;">Never</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      
     </main>
   </div>
 

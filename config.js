@@ -25,6 +25,10 @@ const SUPABASE_STORAGE_KEYS = {
   ANON_KEY: 'supabase_anon_key'
 };
 
+// Hardcoded Supabase defaults
+const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+
 // Minimal Supabase REST helpers (no external libs; uses fetch)
 async function getSupabaseConfig() {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get([
@@ -32,8 +36,8 @@ async function getSupabaseConfig() {
     SUPABASE_STORAGE_KEYS.ANON_KEY
   ].map((k) => k));
   return {
-    url: supabase_url,
-    anonKey: supabase_anon_key
+    url: supabase_url || SUPABASE_DEFAULT_URL,
+    anonKey: supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY
   };
 }
 

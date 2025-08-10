@@ -8,9 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const status = document.getElementById('status');
   const initialModelSelect = document.getElementById('initialModelSelect');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-  const saveSupabaseBtn = document.getElementById('saveSupabaseBtn');
-  const supabaseUrlInput = document.getElementById('supabaseUrl');
-  const supabaseAnonKeyInput = document.getElementById('supabaseAnonKey');
+  // Removed Supabase settings UI
   const companyContext = document.getElementById('companyContext');
   const customPrompts = document.getElementById('customPrompts');
   const includeActionableInsights = document.getElementById('includeActionableInsights');
@@ -26,6 +24,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Analysis elements
   const analysesContainer = document.getElementById('analysesContainer');
   const noAnalyses = document.getElementById('noAnalyses');
+  const analysisSearchInput = document.getElementById('analysisSearchInput');
+  const analysisTypeFilter = document.getElementById('analysisTypeFilter');
+  const favoritesOnly = document.getElementById('favoritesOnly');
+  const competitorsContainer = document.getElementById('competitorsContainer');
   
   // Sidebar elements
   const analysisSidebar = document.getElementById('analysisSidebar');
@@ -36,12 +38,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const sidebarContent = document.getElementById('sidebarContent');
   const sidebarCopyBtn = document.getElementById('sidebarCopyBtn');
   
-  // Chat elements
+  // Chat elements (may not exist if chat UI is removed)
   const chatInput = document.getElementById('chatInput');
   const sendBtn = document.getElementById('sendBtn');
   const mentionDropdown = document.getElementById('mentionDropdown');
   const chatMessages = document.getElementById('chatMessages');
   const clearChatBtn = document.getElementById('clearChatBtn');
+  const starterPrompts = document.getElementById('starterPrompts');
+  const threadsPanel = document.getElementById('threadsPanel');
+  const threadsList = document.getElementById('threadsList');
+  const newThreadBtn = document.getElementById('newThreadBtn');
   
   // Navigation
   const navItems = document.querySelectorAll('.nav-item');
@@ -50,7 +56,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize
   loadApiKey();
   loadSettings();
-  loadUsageStats();
+  // Usage stats section was removed; keep call guarded
+  if (apiCallsToday || apiCallsTotal || lastUsed) {
+    loadUsageStats();
+  }
   loadSavedAnalyses();
   setupNavigation();
   
@@ -58,14 +67,48 @@ document.addEventListener('DOMContentLoaded', function() {
   saveKeyBtn.addEventListener('click', saveApiKey);
   showKeyBtn.addEventListener('click', toggleApiKeyDisplay);
   saveSettingsBtn.addEventListener('click', saveSettings);
-  saveSupabaseBtn.addEventListener('click', saveSupabaseSettings);
+  // Supabase settings removed
   analysesContainer.addEventListener('click', handleAnalysisAction);
+  if (analysisSearchInput) analysisSearchInput.addEventListener('input', applyFilters);
+  if (analysisTypeFilter) analysisTypeFilter.addEventListener('change', applyFilters);
+  if (favoritesOnly) favoritesOnly.addEventListener('change', applyFilters);
+  if (competitorsContainer) {
+    competitorsContainer.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-domain]');
+      if (!chip) return;
+      const domain = chip.dataset.domain;
+      // Toggle selection
+      selectedDomainFilter = selectedDomainFilter === domain ? null : domain;
+      renderCompetitorChips(currentAnalysesRaw);
+      applyFilters();
+    });
+  }
   
-  // Chat event listeners
-  sendBtn.addEventListener('click', sendMessage);
-  chatInput.addEventListener('input', handleChatInput);
-  chatInput.addEventListener('keydown', handleChatKeydown);
-  clearChatBtn.addEventListener('click', clearChat);
+  // Chat event listeners (guarded)
+  if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+  if (chatInput) chatInput.addEventListener('input', handleChatInput);
+  if (chatInput) chatInput.addEventListener('keydown', handleChatKeydown);
+  if (clearChatBtn) clearChatBtn.addEventListener('click', clearChat);
+  const stopStreamBtn = document.getElementById('stopStreamBtn');
+  if (stopStreamBtn) {
+    stopStreamBtn.addEventListener('click', () => {
+      if (currentStreamId) {
+        chrome.runtime.sendMessage({ type: 'aiChatStream', stop: true, requestId: currentStreamId });
+      }
+    });
+  }
+  if (starterPrompts) {
+    starterPrompts.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-prompt]');
+      if (!btn || !chatInput) return;
+      chatInput.value = btn.dataset.prompt || '';
+      chatInput.focus();
+      updateSendButtonState();
+    });
+  }
+  if (newThreadBtn) {
+    newThreadBtn.addEventListener('click', () => createNewThread());
+  }
   
   // Sidebar event listeners
   closeSidebar.addEventListener('click', closeSidebarPanel);
@@ -89,8 +132,87 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update active state
         navItems.forEach(nav => nav.classList.remove('active'));
         item.classList.add('active');
+        if (targetPage === 'insights') {
+          // On first open, try to load past thread messages
+          if (chatMessages && chatMessages.dataset.loaded !== '1') {
+            // Load threads list first
+            chrome.runtime.sendMessage({ type: 'chatListThreads' }, (tresp) => {
+              if (tresp && tresp.success && Array.isArray(tresp.result)) {
+                renderThreads(tresp.result);
+              }
+            });
+            // Then load last-opened thread
+            chrome.runtime.sendMessage({ type: 'chatLoadThread' }, (resp) => {
+              if (resp && resp.success && Array.isArray(resp.result) && resp.result.length) {
+                // Render existing messages quickly
+                resp.result.forEach(m => {
+                  if (m.role === 'user') addUserMessage(m.content);
+                  else addAiMessage(m.content);
+                  conversationHistory.push({ role: m.role, content: m.content });
+                });
+              }
+              if (chatMessages) chatMessages.dataset.loaded = '1';
+            });
+          }
+        }
       });
     });
+  }
+
+  function renderThreads(threads) {
+    if (!threadsList) return;
+    threadsList.innerHTML = '';
+    if (!threads || threads.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.innerHTML = '<p style="margin:8px 0;">No chats yet</p>';
+      threadsList.appendChild(empty);
+      return;
+    }
+    threads.forEach(t => {
+      const item = document.createElement('button');
+      item.className = 'btn btn-secondary btn-sm';
+      item.style.cssText = 'display:flex; width:100%; justify-content:flex-start; margin-bottom:8px;';
+      item.textContent = t.name || 'Untitled Chat';
+      item.addEventListener('click', () => switchThread(t.id));
+      threadsList.appendChild(item);
+    });
+  }
+
+  function createNewThread() {
+    chrome.runtime.sendMessage({ type: 'chatNewThread' }, (resp) => {
+      if (resp && resp.success) {
+        // Refresh list and clear current chat
+        chrome.runtime.sendMessage({ type: 'chatListThreads' }, (tresp) => {
+          if (tresp && tresp.success) renderThreads(tresp.result);
+        });
+        resetChatUI();
+      }
+    });
+  }
+
+  function switchThread(threadId) {
+    // Set current thread id in background then load messages
+    chrome.runtime.sendMessage({ type: 'chatSelectThread', threadId }, (resp) => {
+      if (resp && resp.success) {
+        resetChatUI();
+        chrome.runtime.sendMessage({ type: 'chatLoadThread' }, (mresp) => {
+          if (mresp && mresp.success) {
+            (mresp.result || []).forEach(m => {
+              if (m.role === 'user') addUserMessage(m.content);
+              else addAiMessage(m.content);
+              conversationHistory.push({ role: m.role, content: m.content });
+            });
+          }
+        });
+      }
+    });
+  }
+
+  function resetChatUI() {
+    if (!chatMessages) return;
+    chatMessages.innerHTML = '';
+    conversationHistory = [];
   }
   
   function showPage(pageId) {
@@ -167,21 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
     return key.substring(0, 3) + '...' + key.substring(key.length - 4);
   }
 
-  // Supabase settings
-  async function saveSupabaseSettings() {
-    const url = (supabaseUrlInput.value || '').trim();
-    const anon = (supabaseAnonKeyInput.value || '').trim();
-    if (!url || !anon) {
-      showStatusMessage('Please enter both Supabase URL and anon key', 'error');
-      return;
-    }
-    try {
-      await chrome.storage.sync.set({ supabase_url: url, supabase_anon_key: anon });
-      showStatusMessage('Supabase settings saved', 'success');
-    } catch (e) {
-      showStatusMessage('Error saving Supabase settings: ' + e.message, 'error');
-    }
-  }
+  // Supabase settings removed
   
   // Settings management
   async function saveSettings() {
@@ -247,15 +355,13 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const result = await chrome.storage.sync.get(['api_calls_today', 'api_calls_total', 'last_used']);
       
-      if (result.api_calls_today) {
+      if (apiCallsToday && result.api_calls_today) {
         apiCallsToday.textContent = result.api_calls_today;
       }
-      
-      if (result.api_calls_total) {
+      if (apiCallsTotal && result.api_calls_total) {
         apiCallsTotal.textContent = result.api_calls_total;
       }
-      
-      if (result.last_used) {
+      if (lastUsed && result.last_used) {
         lastUsed.textContent = new Date(result.last_used).toLocaleString();
       }
     } catch (error) {
@@ -264,6 +370,9 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   // Analyses management
+  let dataSource = 'local'; // 'local' | 'supabase'
+  let currentAnalysesRaw = [];
+  let selectedDomainFilter = null;
   async function loadSavedAnalyses() {
     try {
       // First try to load from Supabase
@@ -275,8 +384,10 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       
       if (response.success && response.result.length > 0) {
-        // Display Supabase analyses
-        displaySupabaseAnalyses(response.result);
+        dataSource = 'supabase';
+        currentAnalysesRaw = response.result;
+        renderCompetitorChips(currentAnalysesRaw);
+        applyFilters();
         return;
       }
     } catch (error) {
@@ -287,8 +398,10 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const result = await chrome.storage.sync.get(['saved_analyses']);
       const savedAnalyses = result.saved_analyses || [];
-      
-      displayAnalyses(savedAnalyses);
+      dataSource = 'local';
+      currentAnalysesRaw = savedAnalyses;
+      renderCompetitorChips(currentAnalysesRaw);
+      applyFilters();
     } catch (error) {
       console.error('Error loading saved analyses:', error);
     }
@@ -299,6 +412,7 @@ document.addEventListener('DOMContentLoaded', function() {
   let selectedMentionIndex = -1;
   let currentMentions = [];
   let conversationHistory = [];
+  let currentStreamId = null;
   
   async function sendMessage() {
     const message = chatInput.value.trim();
@@ -307,44 +421,33 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       // Add user message to chat
       addUserMessage(message);
+      // persist user turn
+      chrome.runtime.sendMessage({ type: 'chatSaveTurn', role: 'user', content: message });
       
       // Clear input and disable send button
       chatInput.value = '';
       updateSendButtonState();
       
-      // Show typing indicator
-      const typingIndicator = addTypingIndicator();
-      
       const referencedDocs = extractMentions(message);
       const apiKey = await getStoredApiKey();
-      
       if (!apiKey) {
-        removeTypingIndicator(typingIndicator);
         addAiMessage('Please set your OpenAI API key in the settings first.');
         return;
       }
-      
-      // Send message to background script with conversation history
-      const response = await chrome.runtime.sendMessage({
-        type: 'aiChat',
+
+      // Start streaming
+      const requestId = 'stream_' + Date.now();
+      currentStreamId = requestId;
+      toggleStreamingUI(true);
+      addAiStreamMessageStart();
+
+      chrome.runtime.sendMessage({
+        type: 'aiChatStream',
         message: message,
         referencedDocs: referencedDocs,
-        conversationHistory: conversationHistory
+        conversationHistory: conversationHistory,
+        requestId
       });
-      
-      // Remove typing indicator
-      removeTypingIndicator(typingIndicator);
-      
-      if (response.success) {
-        addAiMessage(response.result);
-        // Add to conversation history
-        conversationHistory.push(
-          { role: 'user', content: message },
-          { role: 'assistant', content: response.result }
-        );
-      } else {
-        addAiMessage('Sorry, I encountered an error: ' + response.error);
-      }
       
     } catch (error) {
       console.error('Chat error:', error);
@@ -370,12 +473,46 @@ document.addEventListener('DOMContentLoaded', function() {
     messageDiv.className = 'ai-message';
     messageDiv.innerHTML = `
       <div class="message-avatar">🤖</div>
-      <div class="message-content">
-        <p>${escapeHtml(message).replace(/\n/g, '</p><p>')}</p>
-      </div>
+      <div class="message-content">${renderMarkdownSafe(message)}</div>
     `;
     chatMessages.appendChild(messageDiv);
     scrollToBottom();
+  }
+
+  // Streaming rendering
+  let liveMessageContainer = null;
+  let liveMessageWrapper = null;
+  function addAiStreamMessageStart() {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'ai-message';
+    messageDiv.innerHTML = `
+      <div class="message-avatar">🤖</div>
+      <div class="message-content"><p id="liveMessage"></p></div>
+    `;
+    chatMessages.appendChild(messageDiv);
+    liveMessageContainer = messageDiv.querySelector('#liveMessage');
+    liveMessageWrapper = messageDiv.querySelector('.message-content');
+    scrollToBottom();
+  }
+  function appendAiStreamToken(token) {
+    if (!liveMessageContainer) return;
+    liveMessageContainer.textContent += token;
+    scrollToBottom();
+  }
+  function finalizeAiStream(full) {
+    toggleStreamingUI(false);
+    if (liveMessageWrapper) {
+      liveMessageWrapper.innerHTML = renderMarkdownSafe(full);
+    }
+    liveMessageContainer = null;
+    liveMessageWrapper = null;
+    // Add to conversation history last user prompt already added earlier
+    conversationHistory.push({ role: 'assistant', content: full });
+  }
+  function toggleStreamingUI(isStreaming) {
+    const stopBtn = document.getElementById('stopStreamBtn');
+    if (!stopBtn) return;
+    stopBtn.style.display = isStreaming ? 'inline-flex' : 'none';
   }
   
   function addTypingIndicator() {
@@ -399,6 +536,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   function scrollToBottom() {
+    if (!chatMessages) return;
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
   
@@ -457,8 +595,71 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   function updateSendButtonState() {
+    if (!chatInput || !sendBtn) return;
     const hasMessage = chatInput.value.trim().length > 0;
     sendBtn.disabled = !hasMessage;
+  }
+
+  // Lightweight safe Markdown renderer for chat bubbles
+  function renderMarkdownSafe(markdown) {
+    if (!markdown) return '';
+    const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
+    let html = '';
+    let inUl = false;
+    let inOl = false;
+    let inP = false;
+    let inCode = false;
+    let codeBuffer = [];
+    const flushP = () => { if (inP) { html += '</p>'; inP = false; } };
+    const openUl = () => { if (!inUl) { flushP(); html += '<ul>'; inUl = true; } };
+    const closeUl = () => { if (inUl) { html += '</ul>'; inUl = false; } };
+    const openOl = () => { if (!inOl) { flushP(); html += '<ol>'; inOl = true; } };
+    const closeOl = () => { if (inOl) { html += '</ol>'; inOl = false; } };
+    const flushCode = () => {
+      if (inCode) {
+        html += `<pre><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`;
+        codeBuffer = [];
+        inCode = false;
+      }
+    };
+    const renderInline = (text) => {
+      let t = escapeHtml(text);
+      t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
+      return t;
+    };
+    for (const raw of lines) {
+      const line = raw;
+      if (line.trim().startsWith('```')) {
+        if (!inCode) { flushP(); closeUl(); closeOl(); inCode = true; codeBuffer = []; continue; }
+        else { flushCode(); continue; }
+      }
+      if (inCode) { codeBuffer.push(line); continue; }
+      if (line.trim() === '') { flushP(); closeUl(); closeOl(); continue; }
+      const hMatch = line.match(/^(#{1,6})\s+(.*)$/);
+      if (hMatch) {
+        flushP(); closeUl(); closeOl();
+        const level = Math.min(hMatch[1].length, 4);
+        html += `<h${level}>${renderInline(hMatch[2])}</h${level}>`;
+        continue;
+      }
+      if (/^\d+\.\s+/.test(line)) {
+        openOl(); closeUl();
+        const content = line.replace(/^\d+\.\s+/, '');
+        html += `<li>${renderInline(content)}</li>`;
+        continue;
+      }
+      if (/^[-*]\s+/.test(line)) {
+        openUl(); closeOl();
+        const content = line.replace(/^[-*]\s+/, '');
+        html += `<li>${renderInline(content)}</li>`;
+        continue;
+      }
+      if (!inP) { html += '<p>'; inP = true; }
+      html += `${renderInline(line)} `;
+    }
+    flushCode(); flushP(); closeUl(); closeOl();
+    return html;
   }
   
   async function showMentionDropdown(searchText) {
@@ -496,6 +697,31 @@ document.addEventListener('DOMContentLoaded', function() {
     
     mentionDropdown.style.display = 'block';
   }
+
+  // Listen for streaming events
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!msg || !msg.type) return;
+    if (msg.type === 'aiChatStreamStart') {
+      // nothing to do, already started
+    } else if (msg.type === 'aiChatStreamChunk') {
+      appendAiStreamToken(msg.token || '');
+    } else if (msg.type === 'aiChatStreamEnd') {
+      finalizeAiStream(msg.full || '');
+      // persist assistant turn
+      if (msg.full) {
+        chrome.runtime.sendMessage({ type: 'chatSaveTurn', role: 'assistant', content: msg.full });
+      }
+      currentStreamId = null;
+    } else if (msg.type === 'aiChatStreamError') {
+      toggleStreamingUI(false);
+      currentStreamId = null;
+      addAiMessage('Stream error: ' + (msg.error || 'Unknown'));
+    } else if (msg.type === 'aiChatStreamAborted') {
+      toggleStreamingUI(false);
+      currentStreamId = null;
+      addAiMessage('Stopped.');
+    }
+  });
   
   function hideMentionDropdown() {
     mentionDropdown.style.display = 'none';
@@ -577,12 +803,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function displayAnalyses(analyses) {
     analysesContainer.innerHTML = '';
-    
     if (analyses.length === 0) {
       analysesContainer.appendChild(noAnalyses);
       return;
     }
-    
     analyses.forEach(analysis => {
       const analysisElement = createAnalysisElement(analysis);
       analysesContainer.appendChild(analysisElement);
@@ -591,17 +815,14 @@ document.addEventListener('DOMContentLoaded', function() {
   
   function displaySupabaseAnalyses(analyses) {
     analysesContainer.innerHTML = '';
-    
     if (analyses.length === 0) {
       analysesContainer.appendChild(noAnalyses);
       return;
     }
-    
     analyses.forEach(analysis => {
       const analysisElement = createSupabaseAnalysisElement(analysis);
       analysesContainer.appendChild(analysisElement);
     });
-    
     // Update available documents for chat
     availableDocuments = analyses.map(analysis => ({
       id: analysis.id,
@@ -612,6 +833,65 @@ document.addEventListener('DOMContentLoaded', function() {
       type: analysis.analysis_type,
       timestamp: analysis.created_at
     }));
+  }
+
+  // Filtering + competitors rendering
+  function applyFilters() {
+    const q = (analysisSearchInput?.value || '').toLowerCase().trim();
+    const type = analysisTypeFilter?.value || 'all';
+    const favOnly = !!(favoritesOnly && favoritesOnly.checked);
+    let list = currentAnalysesRaw.slice();
+    if (dataSource === 'supabase') {
+      list = list.filter(a => {
+        const matchesType = type === 'all' ||
+          (type === 'feature' && a.analysis_type === 'feature_extraction') ||
+          (type === 'pricing' && a.analysis_type === 'pricing_analysis') ||
+          (type === 'general' && a.analysis_type === 'general');
+        const matchesFav = !favOnly || !!a.is_favorite;
+        const hay = `${a.title || ''} ${a.domain || ''} ${a.content || ''}`.toLowerCase();
+        const matchesQ = !q || hay.includes(q);
+        const matchesDomain = !selectedDomainFilter || a.domain === selectedDomainFilter;
+        return matchesType && matchesFav && matchesQ && matchesDomain;
+      });
+      displaySupabaseAnalyses(list);
+    } else {
+      list = list.filter(a => {
+        const matchesType = type === 'all' || a.type === type;
+        const hay = `${a.title || ''} ${a.domain || ''} ${a.content || ''}`.toLowerCase();
+        const matchesQ = !q || hay.includes(q);
+        const matchesDomain = !selectedDomainFilter || a.domain === selectedDomainFilter;
+        return matchesType && matchesQ && matchesDomain;
+      });
+      displayAnalyses(list);
+    }
+  }
+
+  function renderCompetitorChips(list) {
+    if (!competitorsContainer) return;
+    const counts = new Map();
+    list.forEach(a => {
+      const domain = (dataSource === 'supabase') ? a.domain : a.domain;
+      if (!domain) return;
+      counts.set(domain, (counts.get(domain) || 0) + 1);
+    });
+    const items = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    competitorsContainer.innerHTML = '';
+    if (items.length === 0) {
+      competitorsContainer.innerHTML = '<div style="color: var(--muted-foreground)">No competitors yet</div>';
+      return;
+    }
+    items.forEach(([domain, count]) => {
+      const chip = document.createElement('button');
+      chip.className = 'btn btn-secondary btn-sm';
+      chip.style.margin = '4px 0';
+      chip.dataset.domain = domain;
+      chip.innerHTML = `${domain} <span style="opacity:0.7">(${count})</span>`;
+      if (selectedDomainFilter === domain) {
+        chip.classList.remove('btn-secondary');
+        chip.classList.add('btn-primary');
+      }
+      competitorsContainer.appendChild(chip);
+    });
   }
   
   function createAnalysisElement(analysis) {
