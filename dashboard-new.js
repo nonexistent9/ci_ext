@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const status = document.getElementById('status');
   const initialModelSelect = document.getElementById('initialModelSelect');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+  const heliconeEnabled = document.getElementById('heliconeEnabled');
+  const heliconeKeyInput = document.getElementById('heliconeKeyInput');
   // Removed Supabase settings UI
   const companyContext = document.getElementById('companyContext');
   const customPrompts = document.getElementById('customPrompts');
@@ -57,6 +59,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize
   loadApiKey();
   loadSettings();
+  loadHeliconeSettings();
   // Usage stats section was removed; keep call guarded
   if (apiCallsToday || apiCallsTotal || lastUsed) {
     loadUsageStats();
@@ -68,6 +71,8 @@ document.addEventListener('DOMContentLoaded', function() {
   saveKeyBtn.addEventListener('click', saveApiKey);
   showKeyBtn.addEventListener('click', toggleApiKeyDisplay);
   saveSettingsBtn.addEventListener('click', saveSettings);
+  heliconeEnabled?.addEventListener('change', saveHeliconeSettings);
+  heliconeKeyInput?.addEventListener('blur', saveHeliconeSettings);
   // Supabase settings removed
   analysesContainer.addEventListener('click', handleAnalysisAction);
   if (analysisSearchInput) analysisSearchInput.addEventListener('input', applyFilters);
@@ -381,6 +386,29 @@ document.addEventListener('DOMContentLoaded', function() {
       showStatusMessage('Settings saved successfully', 'success');
     } catch (error) {
       showStatusMessage('Error saving settings: ' + error.message, 'error');
+    }
+  }
+
+  async function saveHeliconeSettings() {
+    try {
+      const enabled = !!(heliconeEnabled && heliconeEnabled.checked);
+      const key = (heliconeKeyInput && heliconeKeyInput.value.trim()) || '';
+      const payload = { helicone_enabled: enabled };
+      if (key) payload.helicone_api_key = key;
+      await chrome.storage.sync.set(payload);
+      showStatusMessage('Helicone settings saved', 'success');
+    } catch (e) {
+      showStatusMessage('Error saving Helicone settings: ' + (e?.message || 'Unknown'), 'error');
+    }
+  }
+
+  async function loadHeliconeSettings() {
+    try {
+      const result = await chrome.storage.sync.get(['helicone_enabled', 'helicone_api_key']);
+      if (heliconeEnabled) heliconeEnabled.checked = !!result.helicone_enabled;
+      if (heliconeKeyInput && result.helicone_api_key) heliconeKeyInput.placeholder = 'Key saved ✓';
+    } catch (e) {
+      console.error('Error loading Helicone settings:', e);
     }
   }
   

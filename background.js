@@ -314,13 +314,19 @@ async function startBackgroundAnalysis(payload) {
 
   chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: `Contacting OpenAI (${model})...` });
   
-  // Add timeout to OpenAI API call
-  const fetchPromise = fetch('https://api.openai.com/v1/chat/completions', {
+  // Add timeout to OpenAI/Helicone API call
+  const { enabled: heliconeEnabled, apiKey: heliconeKey } = await getHeliconeConfig();
+  const baseUrl = heliconeEnabled ? 'https://oai.helicone.ai/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json'
+  };
+  if (heliconeEnabled && heliconeKey) {
+    headers['Helicone-Auth'] = `Bearer ${heliconeKey}`;
+  }
+  const fetchPromise = fetch(baseUrl, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify(requestBody)
   });
   
@@ -603,13 +609,17 @@ Please relate your response to my specific company situation.`;
     temperature: 0.7
   };
 
-  // Add timeout to OpenAI API call
-  const fetchPromise = fetch('https://api.openai.com/v1/chat/completions', {
+  // Add timeout to OpenAI/Helicone API call
+  const hc1 = await getHeliconeConfig();
+  const baseUrl1 = hc1.enabled ? 'https://oai.helicone.ai/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+  const headers1 = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json'
+  };
+  if (hc1.enabled && hc1.apiKey) headers1['Helicone-Auth'] = `Bearer ${hc1.apiKey}`;
+  const fetchPromise = fetch(baseUrl1, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: headers1,
     body: JSON.stringify(requestBody)
   });
   
@@ -689,9 +699,13 @@ async function handleAiChatStream(payload) {
   // Notify UI how to stop this stream
   chrome.runtime.sendMessage({ type: 'aiChatStreamStart', requestId });
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const hc2 = await getHeliconeConfig();
+    const baseUrl2 = hc2.enabled ? 'https://oai.helicone.ai/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+    const headers2 = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+    if (hc2.enabled && hc2.apiKey) headers2['Helicone-Auth'] = `Bearer ${hc2.apiKey}`;
+    const res = await fetch(baseUrl2, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: headers2,
       body: JSON.stringify({ model, messages, max_tokens: 1500, temperature: 0.6, stream: true }),
       signal: controller.signal
     });
@@ -879,6 +893,16 @@ async function getStoredApiKey() {
   } catch (e) {
     console.error('Error getting API key:', e);
     return null;
+  }
+}
+
+// Helicone settings (duplicated lightweight helper to avoid cross-file imports in service worker)
+async function getHeliconeConfig() {
+  try {
+    const { helicone_enabled, helicone_api_key } = await chrome.storage.sync.get(['helicone_enabled', 'helicone_api_key']);
+    return { enabled: !!helicone_enabled, apiKey: helicone_api_key || '' };
+  } catch (_) {
+    return { enabled: false, apiKey: '' };
   }
 }
 

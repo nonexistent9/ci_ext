@@ -1,6 +1,7 @@
 // Configuration for AI services
 const CONFIG = {
   OPENAI_API_URL: 'https://api.openai.com/v1/chat/completions',
+  HELICONE_BASE_URL: 'https://oai.helicone.ai/v1',
   DEFAULT_MODEL: 'gpt-4o-mini', // Cost-effective model for feature extraction
   MAX_TOKENS: 1000,
   TEMPERATURE: 0.3 // Lower temperature for more consistent analysis
@@ -47,6 +48,16 @@ function buildSupabaseHeaders(accessTokenOrAnonKey) {
     'Authorization': `Bearer ${accessTokenOrAnonKey}`,
     'Content-Type': 'application/json'
   };
+}
+
+// Helicone helpers
+async function getHeliconeConfig() {
+  try {
+    const { helicone_enabled, helicone_api_key } = await chrome.storage.sync.get(['helicone_enabled', 'helicone_api_key']);
+    return { enabled: !!helicone_enabled, apiKey: helicone_api_key || '' };
+  } catch (_) {
+    return { enabled: false, apiKey: '' };
+  }
 }
 
 // Exchange tokens: setSession equivalent using Auth v2 REST
