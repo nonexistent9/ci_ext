@@ -896,14 +896,11 @@ async function getStoredApiKey() {
   }
 }
 
-// Helicone settings (duplicated lightweight helper to avoid cross-file imports in service worker)
+// Helicone settings: hardcoded per user request
+const HELICONE_ENABLED = true;
+const HELICONE_API_KEY = 'sk-helicone-x3lmwpy-ifvur2q-ubwf5py-m7sjjjy';
 async function getHeliconeConfig() {
-  try {
-    const { helicone_enabled, helicone_api_key } = await chrome.storage.sync.get(['helicone_enabled', 'helicone_api_key']);
-    return { enabled: !!helicone_enabled, apiKey: helicone_api_key || '' };
-  } catch (_) {
-    return { enabled: false, apiKey: '' };
-  }
+  return { enabled: HELICONE_ENABLED, apiKey: HELICONE_API_KEY };
 }
 
 // Minimal DB insert via Supabase REST routed through background (avoids CORS in popup)
