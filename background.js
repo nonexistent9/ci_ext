@@ -117,6 +117,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.remove('chat_thread_id').then(() => sendResponse({ success: true }));
     return true;
   }
+  if (message?.type === 'chatListThreads') {
+    listThreadsBackground()
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to list threads' }));
+    return true;
+  }
+  if (message?.type === 'chatNewThread') {
+    newThreadBackground()
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to create thread' }));
+    return true;
+  }
+  if (message?.type === 'chatSelectThread') {
+    selectThreadBackground(message.threadId)
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to select thread' }));
+    return true;
+  }
   
   if (message?.type === 'supabaseDbInsert') {
     supabaseDbInsert(message)
@@ -1163,6 +1181,47 @@ async function loadChatThreadBackground() {
   if (!res.ok) throw new Error('Failed to load chat');
   const rows = await res.json();
   return rows.map(r => ({ role: r.role, content: r.content, created_at: r.created_at }));
+}
+
+async function listThreadsBackground() {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
+  const { session } = await chrome.storage.local.get(['session']);
+  if (!session?.access_token) throw new Error('Not authenticated');
+  const url = `${effectiveUrl}/rest/v1/chat_threads?order=updated_at.desc`;
+  const res = await fetch(url, { headers: { 'apikey': effectiveAnon, 'Authorization': `Bearer ${session.access_token}` } });
+  if (!res.ok) throw new Error('Failed to list threads');
+  return res.json();
+}
+
+async function newThreadBackground() {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
+  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
+  const { session } = await chrome.storage.local.get(['session']);
+  if (!session?.access_token) throw new Error('Not authenticated');
+  const user = await getCurrentUser();
+  if (!user?.id) throw new Error('User not available');
+  const res = await fetch(`${effectiveUrl}/rest/v1/chat_threads`, {
+    method: 'POST',
+    headers: { 'apikey': effectiveAnon, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify({ name: 'New Chat', user_id: user.id })
+  });
+  if (!res.ok) throw new Error('Failed to create thread');
+  const created = await res.json();
+  const threadId = created[0]?.id;
+  await chrome.storage.local.set({ chat_thread_id: threadId });
+  return created[0];
+}
+
+async function selectThreadBackground(threadId) {
+  if (!threadId) throw new Error('threadId required');
+  await chrome.storage.local.set({ chat_thread_id: threadId });
 }
 
 // Update analysis in Supabase from background

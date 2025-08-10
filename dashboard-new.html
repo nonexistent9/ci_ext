@@ -845,7 +845,20 @@
           <p class="page-description">Chat with an AI grounded in your saved analyses. Use @ to reference specific documents.</p>
         </div>
         <div class="content-body">
-          <div class="card" id="aiInsightsCard">
+          <div style="display:flex; gap:16px; align-items:stretch;">
+            <!-- Threads Panel -->
+            <div class="card" id="threadsPanel" style="width: 280px; flex-shrink:0; display:flex; flex-direction:column;">
+              <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <h2 class="card-title" style="margin:0;">Your Chats</h2>
+                <button id="newThreadBtn" class="btn btn-primary btn-sm">New Chat</button>
+              </div>
+              <div id="threadsList" style="overflow:auto;">
+                <!-- Filled dynamically -->
+              </div>
+            </div>
+
+            <!-- Chat Panel -->
+            <div class="card" id="aiInsightsCard" style="flex:1;">
             <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
               <div>
                 <h2 class="card-title">Ask about your competitive landscape</h2>

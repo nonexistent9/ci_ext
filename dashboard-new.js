@@ -45,6 +45,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const chatMessages = document.getElementById('chatMessages');
   const clearChatBtn = document.getElementById('clearChatBtn');
   const starterPrompts = document.getElementById('starterPrompts');
+  const threadsPanel = document.getElementById('threadsPanel');
+  const threadsList = document.getElementById('threadsList');
+  const newThreadBtn = document.getElementById('newThreadBtn');
   
   // Navigation
   const navItems = document.querySelectorAll('.nav-item');
@@ -103,6 +106,9 @@ document.addEventListener('DOMContentLoaded', function() {
       updateSendButtonState();
     });
   }
+  if (newThreadBtn) {
+    newThreadBtn.addEventListener('click', () => createNewThread());
+  }
   
   // Sidebar event listeners
   closeSidebar.addEventListener('click', closeSidebarPanel);
@@ -129,6 +135,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (targetPage === 'insights') {
           // On first open, try to load past thread messages
           if (chatMessages && chatMessages.dataset.loaded !== '1') {
+            // Load threads list first
+            chrome.runtime.sendMessage({ type: 'chatListThreads' }, (tresp) => {
+              if (tresp && tresp.success && Array.isArray(tresp.result)) {
+                renderThreads(tresp.result);
+              }
+            });
+            // Then load last-opened thread
             chrome.runtime.sendMessage({ type: 'chatLoadThread' }, (resp) => {
               if (resp && resp.success && Array.isArray(resp.result) && resp.result.length) {
                 // Render existing messages quickly
@@ -144,6 +157,62 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       });
     });
+  }
+
+  function renderThreads(threads) {
+    if (!threadsList) return;
+    threadsList.innerHTML = '';
+    if (!threads || threads.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.innerHTML = '<p style="margin:8px 0;">No chats yet</p>';
+      threadsList.appendChild(empty);
+      return;
+    }
+    threads.forEach(t => {
+      const item = document.createElement('button');
+      item.className = 'btn btn-secondary btn-sm';
+      item.style.cssText = 'display:flex; width:100%; justify-content:flex-start; margin-bottom:8px;';
+      item.textContent = t.name || 'Untitled Chat';
+      item.addEventListener('click', () => switchThread(t.id));
+      threadsList.appendChild(item);
+    });
+  }
+
+  function createNewThread() {
+    chrome.runtime.sendMessage({ type: 'chatNewThread' }, (resp) => {
+      if (resp && resp.success) {
+        // Refresh list and clear current chat
+        chrome.runtime.sendMessage({ type: 'chatListThreads' }, (tresp) => {
+          if (tresp && tresp.success) renderThreads(tresp.result);
+        });
+        resetChatUI();
+      }
+    });
+  }
+
+  function switchThread(threadId) {
+    // Set current thread id in background then load messages
+    chrome.runtime.sendMessage({ type: 'chatSelectThread', threadId }, (resp) => {
+      if (resp && resp.success) {
+        resetChatUI();
+        chrome.runtime.sendMessage({ type: 'chatLoadThread' }, (mresp) => {
+          if (mresp && mresp.success) {
+            (mresp.result || []).forEach(m => {
+              if (m.role === 'user') addUserMessage(m.content);
+              else addAiMessage(m.content);
+              conversationHistory.push({ role: m.role, content: m.content });
+            });
+          }
+        });
+      }
+    });
+  }
+
+  function resetChatUI() {
+    if (!chatMessages) return;
+    chatMessages.innerHTML = '';
+    conversationHistory = [];
   }
   
   function showPage(pageId) {
