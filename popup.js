@@ -157,8 +157,15 @@ document.addEventListener('DOMContentLoaded', function () {
       extractBtn.disabled = true;
       showStatus('Starting analysis in background...', 'loading');
 
-      const apiKey = await getStoredApiKey();
-      if (!apiKey) return; // getStoredApiKey already surfaced error + opened settings
+      // Check if user is logged in instead of API key
+      const session = await getSupabaseSession();
+      if (!session?.access_token) {
+        showStatus('Please log in to use AI analysis features.', 'error');
+        setTimeout(() => {
+          openDashboard();
+        }, 1500);
+        return;
+      }
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const jobId = `job_${Date.now()}`;

@@ -1,3 +1,6 @@
+// Import config functions
+importScripts('config.js');
+
 // Background service worker
 chrome.runtime.onInstalled.addListener(() => {
   
@@ -248,9 +251,10 @@ async function startBackgroundAnalysis(payload) {
 
   chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: 'Extracting page content...' });
 
-  const apiKey = await getStoredApiKey();
-  if (!apiKey) {
-    throw new Error('OpenAI API key not found. Please set your API key in the dashboard.');
+  // Check if user is authenticated with Supabase
+  const session = await getSupabaseSession();
+  if (!session?.access_token) {
+    throw new Error('Please log in to use AI analysis features.');
   }
 
   // Extract page data in the target tab with timeout
@@ -312,36 +316,15 @@ async function startBackgroundAnalysis(payload) {
   requestBody.max_tokens = 2000;
   requestBody.temperature = 0.3;
 
-  chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: `Contacting OpenAI (${model})...` });
+  chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: `Contacting AI API (${model})...` });
   
-  // Add timeout to OpenAI/Helicone API call
-  const { enabled: heliconeEnabled, apiKey: heliconeKey } = await getHeliconeConfig();
-  const baseUrl = heliconeEnabled ? 'https://oai.helicone.ai/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
-  const headers = {
-    'Authorization': `Bearer ${apiKey}`,
-    'Content-Type': 'application/json'
-  };
-  if (heliconeEnabled && heliconeKey) {
-    headers['Helicone-Auth'] = `Bearer ${heliconeKey}`;
-  }
-  const fetchPromise = fetch(baseUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody)
+  // Use Supabase Edge Function instead of direct OpenAI API call
+  const data = await callOpenAIViaEdgeFunction({
+    model,
+    messages: requestBody.messages,
+    max_tokens: requestBody.max_tokens,
+    temperature: requestBody.temperature
   });
-  
-  const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('OpenAI API request timed out')), 120000) // 2 minute timeout
-  );
-  
-  const response = await Promise.race([fetchPromise, timeoutPromise]);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`OpenAI API Error: ${error.error?.message || 'Unknown error'}`);
-  }
-
-  const data = await response.json();
   const analysis = data.choices?.[0]?.message?.content || '';
   const modelName = await getInitialModel();
   const reportType = isPricingPage ? 'PRICING ANALYSIS' : 'FEATURE EXTRACTION';
@@ -400,9 +383,10 @@ async function startBackgroundAnalysis(payload) {
 async function handleAiChat(payload) {
   const { message, referencedDocs, conversationHistory } = payload;
   
-  const apiKey = await getStoredApiKey();
-  if (!apiKey) {
-    throw new Error('OpenAI API key not found. Please set your API key in the dashboard.');
+  // Check if user is authenticated with Supabase
+  const session = await getSupabaseSession();
+  if (!session?.access_token) {
+    throw new Error('Please log in to use AI chat features.');
   }
 
   await updateUsageStats();
@@ -609,40 +593,26 @@ Please relate your response to my specific company situation.`;
     temperature: 0.7
   };
 
-  // Add timeout to OpenAI/Helicone API call
-  const hc1 = await getHeliconeConfig();
-  const baseUrl1 = hc1.enabled ? 'https://oai.helicone.ai/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
-  const headers1 = {
-    'Authorization': `Bearer ${apiKey}`,
-    'Content-Type': 'application/json'
-  };
-  if (hc1.enabled && hc1.apiKey) headers1['Helicone-Auth'] = `Bearer ${hc1.apiKey}`;
-  const fetchPromise = fetch(baseUrl1, {
-    method: 'POST',
-    headers: headers1,
-    body: JSON.stringify(requestBody)
+  // Use Supabase Edge Function for secure API calls
+  const data = await callOpenAIViaEdgeFunction({
+    model,
+    messages: requestBody.messages,
+    max_tokens: requestBody.max_tokens,
+    temperature: requestBody.temperature
   });
   
-  const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('OpenAI API request timed out')), 120000) // 2 minute timeout
-  );
-  
-  const response = await Promise.race([fetchPromise, timeoutPromise]);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`OpenAI API Error: ${error.error?.message || 'Unknown error'}`);
-  }
-
-  const data = await response.json();
   return data.choices?.[0]?.message?.content || 'No response generated';
 }
 
 // Streaming variant: emits tokens via runtime.sendMessage events
 async function handleAiChatStream(payload) {
   const { message, referencedDocs, conversationHistory, requestId } = payload;
-  const apiKey = await getStoredApiKey();
-  if (!apiKey) throw new Error('OpenAI API key not found. Please set your API key.');
+  
+  // Check if user is authenticated with Supabase
+  const session = await getSupabaseSession();
+  if (!session?.access_token) {
+    throw new Error('Please log in to use AI chat features.');
+  }
   await updateUsageStats();
   let docsToAnalyze = referencedDocs;
   if (!referencedDocs || referencedDocs.length === 0) {
@@ -691,49 +661,21 @@ async function handleAiChatStream(payload) {
   if (companyContext) current += `\n\nREMEMBER: My company context is: ${companyContext}`;
   messages.push({ role: 'user', content: current });
 
-  const controller = new AbortController();
-  if (requestId) {
-    try { streamControllers.set(requestId, controller); } catch (_) {}
-  }
   const model = await getInitialModel();
-  // Notify UI how to stop this stream
+  // For now, use non-streaming via Edge Function (streaming can be added later)
   chrome.runtime.sendMessage({ type: 'aiChatStreamStart', requestId });
   try {
-    const hc2 = await getHeliconeConfig();
-    const baseUrl2 = hc2.enabled ? 'https://oai.helicone.ai/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
-    const headers2 = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
-    if (hc2.enabled && hc2.apiKey) headers2['Helicone-Auth'] = `Bearer ${hc2.apiKey}`;
-    const res = await fetch(baseUrl2, {
-      method: 'POST',
-      headers: headers2,
-      body: JSON.stringify({ model, messages, max_tokens: 1500, temperature: 0.6, stream: true }),
-      signal: controller.signal
+    // Use Supabase Edge Function for secure API calls
+    const data = await callOpenAIViaEdgeFunction({
+      model,
+      messages,
+      max_tokens: 1500,
+      temperature: 0.6
     });
-    if (!res.ok || !res.body) throw new Error(`OpenAI error ${res.status}`);
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let full = '';
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      // SSE: lines starting with data:
-      const lines = chunk.split('\n').filter(Boolean);
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue;
-        const data = line.replace(/^data:\s*/, '').trim();
-        if (data === '[DONE]') break;
-        try {
-          const json = JSON.parse(data);
-          const token = json.choices?.[0]?.delta?.content || '';
-          if (token) {
-            full += token;
-            chrome.runtime.sendMessage({ type: 'aiChatStreamChunk', requestId, token });
-          }
-        } catch (_) { /* ignore non-json keepalive */ }
-      }
-    }
-    chrome.runtime.sendMessage({ type: 'aiChatStreamEnd', requestId, full });
+    
+    const fullResponse = data.choices?.[0]?.message?.content || 'No response generated';
+    // Simulate streaming by sending the full response
+    chrome.runtime.sendMessage({ type: 'aiChatStreamEnd', requestId, full: fullResponse });
   } catch (e) {
     chrome.runtime.sendMessage({ type: 'aiChatStreamError', requestId, error: e?.message || 'Stream failed' });
   }

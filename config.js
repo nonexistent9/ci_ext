@@ -539,3 +539,60 @@ async function getInitialModel() {
     return CONFIG.DEFAULT_MODEL;
   }
 }
+
+// Call OpenAI API via Supabase Edge Function (secure)
+async function callOpenAIViaEdgeFunction({ model, messages, max_tokens, temperature }) {
+  const cfg = await getSupabaseConfig();
+  const session = await getSupabaseSession();
+  
+  if (!cfg.url) {
+    throw new Error('Supabase not configured. Please check your settings.');
+  }
+  
+  if (!session?.access_token) {
+    throw new Error('Please log in to your account to use AI features. Click the dashboard to sign in.');
+  }
+  
+  const edgeFunctionUrl = `${cfg.url}/functions/v1/openai-proxy`;
+  
+  console.log('Calling Edge Function:', {
+    url: edgeFunctionUrl,
+    hasToken: !!session?.access_token,
+    payload: { model, messages: messages?.length, max_tokens, temperature }
+  });
+  
+  const response = await fetch(edgeFunctionUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: model || CONFIG.DEFAULT_MODEL,
+      messages,
+      max_tokens: max_tokens || CONFIG.MAX_TOKENS,
+      temperature: temperature || CONFIG.TEMPERATURE
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    console.error('Edge Function Error Details:', {
+      status: response.status,
+      statusText: response.statusText,
+      response: errorText
+    });
+    
+    let errorMessage = `Edge Function Error (${response.status}): `;
+    try {
+      const errorData = JSON.parse(errorText);
+      errorMessage += errorData.error || errorData.message || 'Request failed';
+    } catch {
+      errorMessage += errorText || 'Request failed';
+    }
+    
+    throw new Error(errorMessage);
+  }
+
+  return await response.json();
+}

@@ -1,11 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-  // Get all the elements
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  const saveKeyBtn = document.getElementById('saveKeyBtn');
-  const showKeyBtn = document.getElementById('showKeyBtn');
-  const apiKeyDisplay = document.getElementById('apiKeyDisplay');
-  const apiKeyText = document.getElementById('apiKeyText');
-  const status = document.getElementById('status');
+  // Get all the elements (API key elements removed)
   const initialModelSelect = document.getElementById('initialModelSelect');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   // Removed Supabase settings UI
@@ -55,7 +49,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const pages = document.querySelectorAll('.page');
   
   // Initialize
-  loadApiKey();
   loadSettings();
   // Usage stats section was removed; keep call guarded
   if (apiCallsToday || apiCallsTotal || lastUsed) {
@@ -65,8 +58,6 @@ document.addEventListener('DOMContentLoaded', function() {
   setupNavigation();
   
   // Event listeners
-  saveKeyBtn.addEventListener('click', saveApiKey);
-  showKeyBtn.addEventListener('click', toggleApiKeyDisplay);
   saveSettingsBtn.addEventListener('click', saveSettings);
   // Supabase settings removed
   analysesContainer.addEventListener('click', handleAnalysisAction);
@@ -287,74 +278,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById(`${pageId}-page`).classList.remove('hidden');
   }
   
-  // API Key management
-  async function saveApiKey() {
-    const apiKey = apiKeyInput.value.trim();
-    if (!apiKey) {
-      showStatusMessage('Please enter an API key', 'error');
-      return;
-    }
-    
-    try {
-      await chrome.storage.sync.set({ openai_api_key: apiKey });
-      apiKeyInput.value = '';
-      showStatusMessage('API key saved successfully', 'success');
-      loadApiKey();
-    } catch (error) {
-      showStatusMessage('Error saving API key: ' + error.message, 'error');
-    }
-  }
-  
-  async function loadApiKey() {
-    try {
-      const result = await chrome.storage.sync.get(['openai_api_key']);
-      if (result.openai_api_key) {
-        apiKeyInput.placeholder = 'API key saved ✓';
-        apiKeyText.textContent = maskApiKey(result.openai_api_key);
-      } else {
-        apiKeyInput.placeholder = 'Enter your OpenAI API Key';
-        apiKeyText.textContent = 'No API key saved';
-      }
-    } catch (error) {
-      console.error('Error loading API key:', error);
-    }
-  }
-  
-  async function toggleApiKeyDisplay() {
-    if (apiKeyDisplay.classList.contains('hidden')) {
-      apiKeyDisplay.classList.remove('hidden');
-      
-      if (apiKeyText.textContent.includes('*')) {
-        try {
-          const result = await chrome.storage.sync.get(['openai_api_key']);
-          if (result.openai_api_key) {
-            apiKeyText.textContent = result.openai_api_key;
-            showKeyBtn.textContent = 'Hide API Key';
-          }
-        } catch (error) {
-          console.error('Error loading API key:', error);
-        }
-      } else {
-        try {
-          const result = await chrome.storage.sync.get(['openai_api_key']);
-          if (result.openai_api_key) {
-            apiKeyText.textContent = maskApiKey(result.openai_api_key);
-            showKeyBtn.textContent = 'Show API Key';
-          }
-        } catch (error) {
-          console.error('Error loading API key:', error);
-        }
-      }
-    } else {
-      apiKeyDisplay.classList.add('hidden');
-      showKeyBtn.textContent = 'Show/Hide Key';
-    }
-  }
-  
-  function maskApiKey(key) {
-    if (!key) return '';
-    return key.substring(0, 3) + '...' + key.substring(key.length - 4);
-  }
+  // API Key management removed - now handled by Supabase Edge Function
 
   // Supabase settings removed
   
