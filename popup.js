@@ -237,34 +237,24 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // Create analysis object
+      // Save directly to Supabase through background script
       const analysisData = {
-        id: Date.now().toString(),
-        timestamp: new Date().toISOString(),
-        url: currentPageData.url,
-        title: currentPageData.title,
-        content: currentAnalysis,
-        domain: new URL(currentPageData.url).hostname,
-        type: currentAnalysis.includes('PRICING ANALYSIS') ? 'pricing' : 'feature'
+        pageData: currentPageData,
+        report: currentAnalysis,
+        url: currentPageData.url
       };
 
-      // Get existing analyses
-      const result = await chrome.storage.sync.get(['saved_analyses']);
-      const savedAnalyses = result.saved_analyses || [];
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: 'saveAnalysis', analysisData }, resolve);
+      });
 
-      // Add new analysis to the beginning of the array
-      savedAnalyses.unshift(analysisData);
+      if (!response || !response.success) {
+        throw new Error(response?.error || 'Failed to save analysis');
+      }
 
-      // Keep only the last 50 analyses to avoid storage limits
-      const limitedAnalyses = savedAnalyses.slice(0, 50);
-
-      // Save back to storage
-      await chrome.storage.sync.set({ saved_analyses: limitedAnalyses });
-
-      // Update button and show success
       saveBtn.textContent = 'Saved!';
-      showStatus('Analysis saved successfully', 'success');
-      
+      showStatus('Analysis saved to Supabase', 'success');
+
       setTimeout(() => {
         saveBtn.textContent = 'Save Analysis';
       }, 2000);

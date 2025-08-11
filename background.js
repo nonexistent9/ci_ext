@@ -1003,13 +1003,14 @@ async function saveAnalysisToSupabaseBackground(analysisData) {
     is_favorite: analysisData.is_favorite || false
   };
 
-  const res = await fetch(`${effectiveUrl}/rest/v1/analyses`, {
+  // Upsert on (user_id, url) to avoid duplicate errors if the same page is saved again
+  const res = await fetch(`${effectiveUrl}/rest/v1/analyses?on_conflict=user_id,url`, {
     method: 'POST',
     headers: {
       'apikey': effectiveAnon,
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
+      'Prefer': 'return=representation,resolution=merge-duplicates'
     },
     body: JSON.stringify(analysis)
   });
