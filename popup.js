@@ -382,7 +382,7 @@ async function updateUsageStats() {
 }
 
 // Get initial analysis model from settings
-async function getInitialModel(defaultModel = 'gpt-4o-mini') {
+async function getInitialModel(defaultModel = 'gpt-5-mini') {
   try {
     const result = await chrome.storage.sync.get(['initial_model']);
     return result.initial_model || defaultModel; // Default if not set

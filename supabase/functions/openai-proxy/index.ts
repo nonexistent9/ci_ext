@@ -82,12 +82,27 @@ serve(async (req) => {
       headers['Helicone-User-Id'] = user.id
     }
 
+    // Resolve model aliases and provide safe fallback for unsupported models
+    const MODEL_ALIASES: Record<string, string> = {
+      'gpt-5-mini': 'gpt-4o-mini',
+      'gpt-5': 'gpt-4o',
+    }
+    const SUPPORTED_MODELS = new Set([
+      'gpt-4o-mini',
+      'gpt-4o',
+      'o3-mini',
+      'o3',
+    ])
+    const requestedModel = (model || '').trim()
+    const effectiveModel = MODEL_ALIASES[requestedModel] || requestedModel || 'gpt-4o-mini'
+    const finalModel = SUPPORTED_MODELS.has(effectiveModel) ? effectiveModel : 'gpt-4o-mini'
+
     // Make request to OpenAI
     const openaiResponse = await fetch(apiUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: model || 'gpt-4o-mini',
+        model: finalModel,
         messages,
         max_tokens: max_tokens || 1000,
         temperature: temperature || 0.3,
@@ -100,7 +115,9 @@ serve(async (req) => {
         JSON.stringify({ 
           error: 'OpenAI API error', 
           details: errorText,
-          status: openaiResponse.status 
+          status: openaiResponse.status,
+          model_used: finalModel,
+          requested_model: requestedModel,
         }),
         {
           status: openaiResponse.status,

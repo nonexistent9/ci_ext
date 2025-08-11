@@ -2,7 +2,7 @@
 const CONFIG = {
   OPENAI_API_URL: 'https://api.openai.com/v1/chat/completions',
   HELICONE_BASE_URL: 'https://oai.helicone.ai/v1',
-  DEFAULT_MODEL: 'gpt-4o-mini', // Cost-effective model for feature extraction
+  DEFAULT_MODEL: 'gpt-5-mini', // Default to GPT-5 mini
   MAX_TOKENS: 1000,
   TEMPERATURE: 0.3 // Lower temperature for more consistent analysis
 };
@@ -558,6 +558,16 @@ async function callOpenAIViaEdgeFunction({ model, messages, max_tokens, temperat
     payload: { model, messages: messages?.length, max_tokens, temperature }
   });
   
+  // Resolve model aliases on client too, so older deployed functions still work
+  const MODEL_ALIASES = {
+    'gpt-5-mini': 'gpt-4o-mini',
+    'gpt-5': 'gpt-4o',
+  };
+  const SUPPORTED_MODELS = new Set(['gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o3']);
+  const requestedModel = (model || '').trim();
+  const effectiveModel = MODEL_ALIASES[requestedModel] || requestedModel || CONFIG.DEFAULT_MODEL;
+  const finalModel = SUPPORTED_MODELS.has(effectiveModel) ? effectiveModel : CONFIG.DEFAULT_MODEL;
+
   const response = await fetch(edgeFunctionUrl, {
     method: 'POST',
     headers: {
@@ -565,7 +575,7 @@ async function callOpenAIViaEdgeFunction({ model, messages, max_tokens, temperat
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: model || CONFIG.DEFAULT_MODEL,
+      model: finalModel,
       messages,
       max_tokens: max_tokens || CONFIG.MAX_TOKENS,
       temperature: temperature || CONFIG.TEMPERATURE
@@ -574,21 +584,12 @@ async function callOpenAIViaEdgeFunction({ model, messages, max_tokens, temperat
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
-    console.error('Edge Function Error Details:', {
-      status: response.status,
-      statusText: response.statusText,
-      response: errorText
-    });
-    
-    let errorMessage = `Edge Function Error (${response.status}): `;
-    try {
-      const errorData = JSON.parse(errorText);
-      errorMessage += errorData.error || errorData.message || 'Request failed';
-    } catch {
-      errorMessage += errorText || 'Request failed';
-    }
-    
-    throw new Error(errorMessage);
+    let parsed;
+    try { parsed = JSON.parse(errorText); } catch (_) { parsed = null; }
+    console.error('Edge Function Error Details:', parsed || errorText);
+    const msg = parsed?.error || parsed?.message || parsed?.details || errorText || 'Request failed';
+    const detailSuffix = parsed?.model_used ? ` [requested: ${requestedModel || 'n/a'}, used: ${parsed.model_used}]` : '';
+    throw new Error(`Edge Function Error (${response.status}): ${msg}${detailSuffix}`);
   }
 
   return await response.json();
