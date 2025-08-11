@@ -16,18 +16,12 @@ Extract competitor features and pricing from any website using AI. Perfect for c
 5. Select the folder where you extracted the files
 6. The extension is now installed! You'll see the CI Feature Extractor icon in your toolbar
 
-### Step 3: Get Your OpenAI API Key
-1. Go to [OpenAI's website](https://platform.openai.com/api-keys)
-2. Sign up or log in to your account
-3. Create a new API key
-4. Copy the key (starts with "sk-...")
+### Step 3: Configure Supabase (No local OpenAI key needed)
+The extension calls a Supabase Edge Function that holds your server-side OpenAI key. Users authenticate and calls are proxied securely.
 
-### Step 4: Setup the Extension
-1. Click the extension icon in your Chrome toolbar
-2. Click "Settings" at the bottom right
-3. Paste your OpenAI API key
-4. Choose your preferred AI models (GPT-4o-mini is recommended for beginners)
-5. Click "Save Settings"
+1. Create a Supabase project and deploy the Edge Function as described in `EDGE-FUNCTION-SETUP.md`.
+2. In the dashboard Settings page, set your Supabase URL and anon key if different from defaults.
+3. Use the in-extension login (email + code) to authenticate.
 
 ## ✨ How to Use
 
@@ -59,9 +53,9 @@ Extract competitor features and pricing from any website using AI. Perfect for c
 
 ## 🔒 Privacy & Security
 
-- ✅ Your data stays private (only sent to OpenAI for analysis)
-- ✅ API keys stored securely in Chrome
-- ✅ No data collection by this extension
+- ✅ Your data is sent only to your Supabase Edge Function (and OpenAI), using your authenticated session
+- ✅ No OpenAI API keys are stored in the extension
+- ✅ Row Level Security in Supabase restricts data to each user
 - ✅ Open source code for transparency
 
 ## 💡 Pro Tips

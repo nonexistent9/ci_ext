@@ -64,27 +64,22 @@ serve(async (req) => {
       )
     }
 
-    // Get Helicone API key (required)
+    // Helicone API key (optional). If missing, fall back to OpenAI direct.
     const heliconeApiKey = Deno.env.get('HELICONE_API_KEY')
-    if (!heliconeApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'Helicone API key not configured' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
-    }
 
-    // Use Helicone routing only
-    const apiUrl = 'https://oai.helicone.ai/v1/chat/completions'
+    // Pick API URL based on Helicone availability
+    const apiUrl = heliconeApiKey
+      ? 'https://oai.helicone.ai/v1/chat/completions'
+      : 'https://api.openai.com/v1/chat/completions'
 
-    // Prepare headers with Helicone
+    // Prepare headers
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${openaiApiKey}`,
       'Content-Type': 'application/json',
-      'Helicone-Auth': `Bearer ${heliconeApiKey}`,
-      'Helicone-User-Id': user.id,
+    }
+    if (heliconeApiKey) {
+      headers['Helicone-Auth'] = `Bearer ${heliconeApiKey}`
+      headers['Helicone-User-Id'] = user.id
     }
 
     // Make request to OpenAI

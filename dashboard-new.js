@@ -1214,24 +1214,26 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Show status message
   function showStatusMessage(message, type) {
-    status.textContent = message;
-    status.className = type;
-    status.classList.remove('hidden');
+    const statusEl = document.getElementById('status');
+    if (!statusEl) return;
+    statusEl.textContent = message;
+    statusEl.className = type;
+    statusEl.classList.remove('hidden');
     
     // Apply appropriate styling based on type
     if (type === 'success') {
-      status.style.backgroundColor = 'hsl(142 76% 36% / 0.1)';
-      status.style.color = 'hsl(142 76% 36%)';
-      status.style.border = '1px solid hsl(142 76% 36% / 0.2)';
+      statusEl.style.backgroundColor = 'hsl(142 76% 36% / 0.1)';
+      statusEl.style.color = 'hsl(142 76% 36%)';
+      statusEl.style.border = '1px solid hsl(142 76% 36% / 0.2)';
     } else if (type === 'error') {
-      status.style.backgroundColor = 'hsl(0 84% 60% / 0.1)';
-      status.style.color = 'hsl(0 84% 60%)';
-      status.style.border = '1px solid hsl(0 84% 60% / 0.2)';
+      statusEl.style.backgroundColor = 'hsl(0 84% 60% / 0.1)';
+      statusEl.style.color = 'hsl(0 84% 60%)';
+      statusEl.style.border = '1px solid hsl(0 84% 60% / 0.2)';
     }
     
     // Hide after 3 seconds
     setTimeout(() => {
-      status.classList.add('hidden');
+      statusEl.classList.add('hidden');
     }, 3000);
   }
 });

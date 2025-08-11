@@ -55,7 +55,8 @@ chrome.notifications?.onClicked.addListener(() => {
 const streamControllers = new Map();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('Background received message:', message.type);
+  const DEBUG = false;
+  if (DEBUG) console.log('Background received message:', message.type);
   
   if (message?.type === 'startAnalysis') {
     startBackgroundAnalysis(message)
@@ -188,7 +189,7 @@ function setupOAuthListener() {
         if (!changeInfo.url.startsWith(redirectBase)) return;
         await finishUserOAuth(changeInfo.url, tabId);
       } catch (e) {
-        console.error('OAuth finalize error:', e);
+    console.error('OAuth finalize error:', e);
       }
     });
   } catch (e) {
@@ -197,13 +198,10 @@ function setupOAuthListener() {
 }
 
 async function finishUserOAuth(url, tabId) {
-  console.log('Handling Supabase OAuth callback...');
+  const DEBUG = false;
+  if (DEBUG) console.log('Handling Supabase OAuth callback...');
   try {
-    const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
-    const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
-    const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
-    const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
-    const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
+    const { url: effectiveUrl, anonKey: effectiveAnon } = await getSupabaseConfig();
 
     const u = new URL(url);
     const hash = (u.hash || '').replace(/^#/, '');
@@ -220,15 +218,17 @@ async function finishUserOAuth(url, tabId) {
 
     // Optionally fetch user to validate
     try {
-      const res = await fetch(`${effectiveUrl}/auth/v1/user`, {
-        headers: {
-          'apikey': effectiveAnon,
-          'Authorization': `Bearer ${access_token}`
+      if (effectiveUrl && effectiveAnon) {
+        const res = await fetch(`${effectiveUrl}/auth/v1/user`, {
+          headers: {
+            'apikey': effectiveAnon,
+            'Authorization': `Bearer ${access_token}`
+          }
+        });
+        if (res.ok) {
+          const user = await res.json();
+          await chrome.storage.local.set({ supabase_user: user });
         }
-      });
-      if (res.ok) {
-        const user = await res.json();
-        await chrome.storage.local.set({ supabase_user: user });
       }
     } catch (_) {}
 
@@ -239,7 +239,7 @@ async function finishUserOAuth(url, tabId) {
 
     // Notify popup/UI
     chrome.runtime.sendMessage({ type: 'authComplete', success: true });
-    console.log('Supabase OAuth complete.');
+    if (DEBUG) console.log('Supabase OAuth complete.');
   } catch (error) {
     console.error('finishUserOAuth error:', error);
     chrome.runtime.sendMessage({ type: 'authComplete', success: false, error: error?.message });
@@ -409,9 +409,12 @@ async function handleAiChat(payload) {
   const customPrompts = await getCustomPrompts();
   const analysisPreferences = await getAnalysisPreferences();
   
-  console.log('AI Chat Debug - Company Context:', companyContext);
-  console.log('AI Chat Debug - Custom Prompts:', customPrompts);
-  console.log('AI Chat Debug - Analysis Preferences:', analysisPreferences);
+  const DEBUG = false;
+  if (DEBUG) {
+    console.log('AI Chat Debug - Company Context:', companyContext);
+    console.log('AI Chat Debug - Custom Prompts:', customPrompts);
+    console.log('AI Chat Debug - Analysis Preferences:', analysisPreferences);
+  }
 
   // Build context from documents to analyze
   let documentContext = '';
@@ -554,7 +557,7 @@ DOCUMENT HANDLING:
     systemPrompt += `\n\nCUSTOM ANALYSIS INSTRUCTIONS:\n${customPrompts}`;
   }
   
-  console.log('AI Chat Debug - Final System Prompt:', systemPrompt);
+  if (DEBUG) console.log('AI Chat Debug - Final System Prompt:', systemPrompt);
 
   // Build messages array with conversation history
   const messages = [
@@ -582,8 +585,10 @@ Please relate your response to my specific company situation.`;
   
   messages.push({ role: 'user', content: currentMessage });
   
-  console.log('AI Chat Debug - Current Message:', currentMessage);
-  console.log('AI Chat Debug - Full Messages Array:', JSON.stringify(messages, null, 2));
+  if (DEBUG) {
+    console.log('AI Chat Debug - Current Message:', currentMessage);
+    console.log('AI Chat Debug - Full Messages Array:', JSON.stringify(messages, null, 2));
+  }
 
   const model = await getInitialModel();
   const requestBody = {
@@ -766,11 +771,7 @@ async function findRelevantDocumentsSupabase(query) {
 }
 
 async function getCurrentUser() {
-  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
-  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
-  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
-  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
-  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
+  const { url: effectiveUrl, anonKey: effectiveAnon } = await getSupabaseConfig();
   const { session, supabase_user } = await chrome.storage.local.get(['session', 'supabase_user']);
   if (supabase_user?.id) return supabase_user;
   if (!session?.access_token) return null;
@@ -838,26 +839,21 @@ async function getStoredApiKey() {
   }
 }
 
-// Helicone settings: hardcoded per user request
-const HELICONE_ENABLED = true;
-const HELICONE_API_KEY = 'sk-helicone-x3lmwpy-ifvur2q-ubwf5py-m7sjjjy';
-async function getHeliconeConfig() {
-  return { enabled: HELICONE_ENABLED, apiKey: HELICONE_API_KEY };
-}
+// Helicone settings removed from background to avoid shipping secrets in code.
+// Edge Function handles routing/observability.
 
 // Minimal DB insert via Supabase REST routed through background (avoids CORS in popup)
 async function supabaseDbInsert({ table, rows }) {
-  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
-  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
-  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
-  const effectiveUrl = supabase_url || SUPABASE_DEFAULT_URL;
-  const effectiveAnon = supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY;
+  const { url: effectiveUrl, anonKey: effectiveAnon } = await getSupabaseConfig();
   const { session } = await chrome.storage.local.get('session');
-  const token = session?.access_token || effectiveAnon;
+  if (!effectiveUrl || !effectiveAnon || !session?.access_token) {
+    throw new Error('Not authenticated or Supabase not configured');
+  }
+  const token = session.access_token;
   const res = await fetch(`${effectiveUrl}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
-      apikey: token,
+      apikey: effectiveAnon,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Prefer: 'return=representation'
