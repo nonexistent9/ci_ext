@@ -190,29 +190,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update active state
         navItems.forEach(nav => nav.classList.remove('active'));
         item.classList.add('active');
-        if (targetPage === 'insights') {
-          // On first open, try to load past thread messages
-          if (chatMessages && chatMessages.dataset.loaded !== '1') {
-            // Load threads list first
-            chrome.runtime.sendMessage({ type: 'chatListThreads' }, (tresp) => {
-              if (tresp && tresp.success && Array.isArray(tresp.result)) {
-                renderThreads(tresp.result);
-              }
-            });
-            // Then load last-opened thread
-            chrome.runtime.sendMessage({ type: 'chatLoadThread' }, (resp) => {
-              if (resp && resp.success && Array.isArray(resp.result) && resp.result.length) {
-                // Render existing messages quickly
-                resp.result.forEach(m => {
-                  if (m.role === 'user') addUserMessage(m.content);
-                  else addAiMessage(m.content);
-                  conversationHistory.push({ role: m.role, content: m.content });
-                });
-              }
-              if (chatMessages) chatMessages.dataset.loaded = '1';
-            });
-          }
-        }
       });
     });
   }

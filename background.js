@@ -75,70 +75,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep message channel open for async response
   }
   
-  if (message?.type === 'aiChat') {
-    console.log('Processing aiChat message');
-    handleAiChat(message)
-      .then((result) => {
-        console.log('aiChat completed successfully');
-        sendResponse({ success: true, result });
-      })
-      .catch((error) => {
-        console.error('AI chat error:', error);
-        sendResponse({ success: false, error: error?.message || 'Unknown error' });
-      });
-    return true; // Keep message channel open for async response
-  }
-  if (message?.type === 'aiChatStream') {
-    if (message.stop && message.requestId && streamControllers.has(message.requestId)) {
-      try { streamControllers.get(message.requestId).abort(); } catch (_) {}
-      streamControllers.delete(message.requestId);
-      chrome.runtime.sendMessage({ type: 'aiChatStreamAborted', requestId: message.requestId });
-      sendResponse({ success: true });
-      return true;
-    }
-    // Streaming SSE style using fetch with ReadableStream
-    handleAiChatStream(message)
-      .then(() => {})
-      .catch((error) => {
-        chrome.runtime.sendMessage({ type: 'aiChatStreamError', requestId: message.requestId, error: error?.message || 'Unknown error' });
-      });
-    sendResponse({ success: true });
-    return true;
-  }
-  if (message?.type === 'chatSaveTurn') {
-    saveChatTurnBackground(message)
-      .then((result) => sendResponse({ success: true, result }))
-      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to save chat' }));
-    return true;
-  }
-  if (message?.type === 'chatLoadThread') {
-    loadChatThreadBackground()
-      .then((result) => sendResponse({ success: true, result }))
-      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to load chat' }));
-    return true;
-  }
-  if (message?.type === 'chatResetThread') {
-    chrome.storage.local.remove('chat_thread_id').then(() => sendResponse({ success: true }));
-    return true;
-  }
-  if (message?.type === 'chatListThreads') {
-    listThreadsBackground()
-      .then((result) => sendResponse({ success: true, result }))
-      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to list threads' }));
-    return true;
-  }
-  if (message?.type === 'chatNewThread') {
-    newThreadBackground()
-      .then((result) => sendResponse({ success: true, result }))
-      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to create thread' }));
-    return true;
-  }
-  if (message?.type === 'chatSelectThread') {
-    selectThreadBackground(message.threadId)
-      .then(() => sendResponse({ success: true }))
-      .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to select thread' }));
-    return true;
-  }
+  // AI Insights feature removed: ignore chat-related message types
   
   if (message?.type === 'supabaseDbInsert') {
     supabaseDbInsert(message)
@@ -380,6 +317,7 @@ async function startBackgroundAnalysis(payload) {
   }
 }
 
+// AI Insights removed
 async function handleAiChat(payload) {
   const { message, referencedDocs, conversationHistory } = payload;
   
@@ -610,6 +548,7 @@ Please relate your response to my specific company situation.`;
 }
 
 // Streaming variant: emits tokens via runtime.sendMessage events
+// AI Insights removed
 async function handleAiChatStream(payload) {
   const { message, referencedDocs, conversationHistory, requestId } = payload;
   
@@ -1087,6 +1026,7 @@ async function getUserAnalysesBackground(options = {}) {
 }
 
 // --- Chat persistence (per-user) ---
+// AI Insights removed
 async function saveChatTurnBackground({ role, content }) {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
   const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
@@ -1126,6 +1066,7 @@ async function saveChatTurnBackground({ role, content }) {
   return { threadId, messageId: saved[0]?.id };
 }
 
+// AI Insights removed
 async function loadChatThreadBackground() {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
   const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
@@ -1143,6 +1084,7 @@ async function loadChatThreadBackground() {
   return rows.map(r => ({ role: r.role, content: r.content, created_at: r.created_at }));
 }
 
+// AI Insights removed
 async function listThreadsBackground() {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
   const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
@@ -1157,6 +1099,7 @@ async function listThreadsBackground() {
   return res.json();
 }
 
+// AI Insights removed
 async function newThreadBackground() {
   const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
   const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
@@ -1179,6 +1122,7 @@ async function newThreadBackground() {
   return created[0];
 }
 
+// AI Insights removed
 async function selectThreadBackground(threadId) {
   if (!threadId) throw new Error('threadId required');
   await chrome.storage.local.set({ chat_thread_id: threadId });
