@@ -75,6 +75,40 @@ document.addEventListener('DOMContentLoaded', function() {
       applyFilters();
     });
   }
+
+  // Login modal event listeners
+  document.getElementById('sendCodeBtn').addEventListener('click', handleSendLoginCode);
+  document.getElementById('verifyCodeBtn').addEventListener('click', handleVerifyLoginCode);
+  document.getElementById('cancelLoginBtn').addEventListener('click', hideLoginModal);
+  document.getElementById('backToEmailBtn').addEventListener('click', backToEmailStep);
+  document.getElementById('resendCodeBtn').addEventListener('click', handleResendCode);
+  
+  // Close modal when clicking overlay
+  document.getElementById('loginModal').addEventListener('click', (e) => {
+    if (e.target.id === 'loginModal') {
+      hideLoginModal();
+    }
+  });
+
+  // Handle Enter key in login inputs
+  document.getElementById('loginEmail').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      handleSendLoginCode();
+    }
+  });
+
+  document.getElementById('loginCode').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      handleVerifyLoginCode();
+    }
+  });
+
+  // Auto-format verification code input
+  document.getElementById('loginCode').addEventListener('input', (e) => {
+    let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+    if (value.length > 6) value = value.slice(0, 6);
+    e.target.value = value;
+  });
   
   // Chat event listeners (guarded)
   if (sendBtn) sendBtn.addEventListener('click', sendMessage);
@@ -142,29 +176,170 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   async function handleDashboardLogin() {
-    // Minimal inline login using prompts to avoid heavy UI changes
-    const email = prompt('Enter your email to receive a login code:');
+    showLoginModal();
+  }
+
+  function showLoginModal() {
+    const modal = document.getElementById('loginModal');
+    const step1 = document.getElementById('loginStep1');
+    const step2 = document.getElementById('loginStep2');
+    const errorDiv = document.getElementById('loginError');
+    const emailInput = document.getElementById('loginEmail');
+    
+    // Reset modal state
+    step1.classList.remove('hidden');
+    step2.classList.add('hidden');
+    errorDiv.classList.add('hidden');
+    emailInput.value = '';
+    document.getElementById('loginCode').value = '';
+    
+    modal.classList.add('show');
+    setTimeout(() => emailInput.focus(), 100);
+  }
+
+  function hideLoginModal() {
+    const modal = document.getElementById('loginModal');
+    modal.classList.remove('show');
+  }
+
+  function showLoginError(message) {
+    const errorDiv = document.getElementById('loginError');
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('hidden');
+  }
+
+  function setButtonLoading(buttonId, isLoading) {
+    const btn = document.getElementById(buttonId);
+    const text = btn.querySelector('.btn-text');
+    const spinner = btn.querySelector('.btn-spinner');
+    
+    if (isLoading) {
+      text.style.opacity = '0';
+      spinner.classList.remove('hidden');
+      btn.disabled = true;
+    } else {
+      text.style.opacity = '1';
+      spinner.classList.add('hidden');
+      btn.disabled = false;
+    }
+  }
+
+  function validateEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  async function handleSendLoginCode() {
+    const emailInput = document.getElementById('loginEmail');
+    const email = emailInput.value.trim();
+    const errorDiv = document.getElementById('loginError');
+    
+    // Hide previous errors
+    errorDiv.classList.add('hidden');
+    
     if (!email) {
-      showStatusMessage('Email is required to log in', 'error');
+      showLoginError('Please enter your email address');
+      emailInput.focus();
       return;
     }
+    
+    if (!validateEmail(email)) {
+      showLoginError('Please enter a valid email address');
+      emailInput.focus();
+      return;
+    }
+    
+    setButtonLoading('sendCodeBtn', true);
+    
     try {
-      await supabaseSendEmailOtp(email.trim());
-    } catch (e) {
-      showStatusMessage('Failed to send code: ' + (e?.message || 'Unknown'), 'error');
+      await supabaseSendEmailOtp(email);
+      
+      // Switch to step 2
+      document.getElementById('loginStep1').classList.add('hidden');
+      document.getElementById('loginStep2').classList.remove('hidden');
+      document.getElementById('emailDisplay').textContent = email;
+      
+      setTimeout(() => {
+        document.getElementById('loginCode').focus();
+      }, 100);
+      
+    } catch (error) {
+      showLoginError('Failed to send login code. Please try again.');
+      console.error('Login error:', error);
+    } finally {
+      setButtonLoading('sendCodeBtn', false);
+    }
+  }
+
+  async function handleVerifyLoginCode() {
+    const emailInput = document.getElementById('loginEmail');
+    const codeInput = document.getElementById('loginCode');
+    const email = emailInput.value.trim();
+    const code = codeInput.value.trim();
+    const errorDiv = document.getElementById('loginError');
+    
+    // Hide previous errors
+    errorDiv.classList.add('hidden');
+    
+    if (!code) {
+      showLoginError('Please enter the verification code');
+      codeInput.focus();
       return;
     }
-    const token = prompt('Enter the 6-digit code sent to your email:');
-    if (!token) {
-      showStatusMessage('Verification code is required', 'error');
+    
+    if (code.length !== 6) {
+      showLoginError('Verification code must be 6 digits');
+      codeInput.focus();
       return;
     }
+    
+    setButtonLoading('verifyCodeBtn', true);
+    
     try {
-      await supabaseVerifyEmailOtp(email.trim(), token.trim());
-      showStatusMessage('Signed in successfully', 'success');
+      await supabaseVerifyEmailOtp(email, code);
+      hideLoginModal();
+      showStatusMessage('Signed in successfully!', 'success');
       refreshAuthControls();
-    } catch (e) {
-      showStatusMessage('Verification failed: ' + (e?.message || 'Unknown'), 'error');
+      
+    } catch (error) {
+      showLoginError('Invalid verification code. Please try again.');
+      codeInput.focus();
+      codeInput.select();
+      console.error('Verification error:', error);
+    } finally {
+      setButtonLoading('verifyCodeBtn', false);
+    }
+  }
+
+  function backToEmailStep() {
+    document.getElementById('loginStep2').classList.add('hidden');
+    document.getElementById('loginStep1').classList.remove('hidden');
+    document.getElementById('loginError').classList.add('hidden');
+    setTimeout(() => {
+      document.getElementById('loginEmail').focus();
+    }, 100);
+  }
+
+  async function handleResendCode() {
+    const emailInput = document.getElementById('loginEmail');
+    const email = emailInput.value.trim();
+    const resendBtn = document.getElementById('resendCodeBtn');
+    
+    resendBtn.disabled = true;
+    resendBtn.textContent = 'Sending...';
+    
+    try {
+      await supabaseSendEmailOtp(email);
+      resendBtn.textContent = 'Code sent!';
+      setTimeout(() => {
+        resendBtn.textContent = 'Resend';
+        resendBtn.disabled = false;
+      }, 3000);
+    } catch (error) {
+      showLoginError('Failed to resend code. Please try again.');
+      resendBtn.textContent = 'Resend';
+      resendBtn.disabled = false;
+      console.error('Resend error:', error);
     }
   }
   
@@ -173,10 +348,15 @@ document.addEventListener('DOMContentLoaded', function() {
   analysisOverlay.addEventListener('click', closeSidebarPanel);
   sidebarCopyBtn.addEventListener('click', copySidebarContent);
   
-  // Keyboard support for sidebar
+  // Keyboard support for sidebar and modals
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && analysisSidebar.classList.contains('open')) {
-      closeSidebarPanel();
+    if (e.key === 'Escape') {
+      const loginModal = document.getElementById('loginModal');
+      if (loginModal.classList.contains('show')) {
+        hideLoginModal();
+      } else if (analysisSidebar.classList.contains('open')) {
+        closeSidebarPanel();
+      }
     }
   });
   

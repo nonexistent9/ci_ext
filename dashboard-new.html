@@ -749,6 +749,182 @@
     .hidden {
       display: none !important;
     }
+
+    /* Login Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s ease;
+    }
+
+    .modal-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal-content {
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      width: 100%;
+      max-width: 420px;
+      max-height: 90vh;
+      overflow-y: auto;
+      transform: scale(0.95) translateY(20px);
+      transition: transform 0.2s ease;
+    }
+
+    .modal-overlay.show .modal-content {
+      transform: scale(1) translateY(0);
+    }
+
+    .login-modal {
+      margin: 20px;
+    }
+
+    .modal-header {
+      padding: 24px 24px 16px;
+      text-align: center;
+      border-bottom: 1px solid hsl(var(--border));
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: hsl(var(--foreground));
+      margin-bottom: 8px;
+    }
+
+    .modal-description {
+      font-size: 14px;
+      color: hsl(var(--muted-foreground));
+      margin: 0;
+    }
+
+    .modal-body {
+      padding: 24px;
+    }
+
+    .login-step {
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .login-code-sent {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .check-icon {
+      width: 48px;
+      height: 48px;
+      color: hsl(var(--primary));
+      margin: 0 auto 16px;
+    }
+
+    .login-code-sent h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: hsl(var(--foreground));
+    }
+
+    .login-code-sent p {
+      font-size: 14px;
+      color: hsl(var(--muted-foreground));
+      margin: 0;
+    }
+
+    .code-input {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .modal-actions .btn {
+      flex: 1;
+      position: relative;
+    }
+
+    .btn-spinner {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      animation: spin 1s linear infinite;
+    }
+
+    .spinner-path {
+      transform-origin: center;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .resend-section {
+      text-align: center;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid hsl(var(--border));
+    }
+
+    .resend-section p {
+      font-size: 14px;
+      color: hsl(var(--muted-foreground));
+      margin: 0;
+    }
+
+    .link-btn {
+      background: none;
+      border: none;
+      color: hsl(var(--primary));
+      font-size: 14px;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 0;
+    }
+
+    .link-btn:hover {
+      color: hsl(var(--primary) / 0.8);
+    }
+
+    .error-message {
+      background: hsl(var(--destructive) / 0.1);
+      border: 1px solid hsl(var(--destructive) / 0.2);
+      color: hsl(var(--destructive));
+      padding: 12px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      margin-top: 16px;
+    }
     
     .sr-only {
       position: absolute;
@@ -952,6 +1128,74 @@
         </svg>
         Copy Analysis
       </button>
+    </div>
+  </div>
+
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal-content login-modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Welcome back!</h2>
+        <p class="modal-description">Sign in to access your competitive intelligence dashboard</p>
+      </div>
+      
+      <div class="modal-body">
+        <div id="loginStep1" class="login-step">
+          <div class="form-group">
+            <label for="loginEmail" class="label">Email address</label>
+            <input type="email" id="loginEmail" class="input" placeholder="Enter your email" required>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="sendCodeBtn">
+              <span class="btn-text">Send login code</span>
+              <div class="btn-spinner hidden">
+                <svg class="spinner" viewBox="0 0 24 24">
+                  <circle class="spinner-path" cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="32">
+                    <animate attributeName="stroke-dashoffset" dur="2s" values="32;0" repeatCount="indefinite"/>
+                  </circle>
+                </svg>
+              </div>
+            </button>
+            <button class="btn btn-secondary" id="cancelLoginBtn">Cancel</button>
+          </div>
+        </div>
+        
+        <div id="loginStep2" class="login-step hidden">
+          <div class="login-code-sent">
+            <svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+            </svg>
+            <h3>Check your email</h3>
+            <p>We've sent a 6-digit code to <strong id="emailDisplay"></strong></p>
+          </div>
+          
+          <div class="form-group">
+            <label for="loginCode" class="label">Verification code</label>
+            <input type="text" id="loginCode" class="input code-input" placeholder="000000" maxlength="6" pattern="[0-9]*" inputmode="numeric">
+          </div>
+          
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="verifyCodeBtn">
+              <span class="btn-text">Verify & Sign In</span>
+              <div class="btn-spinner hidden">
+                <svg class="spinner" viewBox="0 0 24 24">
+                  <circle class="spinner-path" cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="32">
+                    <animate attributeName="stroke-dashoffset" dur="2s" values="32;0" repeatCount="indefinite"/>
+                  </circle>
+                </svg>
+              </div>
+            </button>
+            <button class="btn btn-secondary" id="backToEmailBtn">Back</button>
+          </div>
+          
+          <div class="resend-section">
+            <p>Didn't receive the code? <button class="link-btn" id="resendCodeBtn">Resend</button></p>
+          </div>
+        </div>
+        
+        <div id="loginError" class="error-message hidden"></div>
+      </div>
     </div>
   </div>
 
