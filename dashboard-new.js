@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const analysesContainer = document.getElementById('analysesContainer');
   const noAnalyses = document.getElementById('noAnalyses');
   const analysisSearchInput = document.getElementById('analysisSearchInput');
-  const analysisTypeFilter = document.getElementById('analysisTypeFilter');
   const favoritesOnly = document.getElementById('favoritesOnly');
   const competitorsContainer = document.getElementById('competitorsContainer');
   
@@ -62,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Supabase settings removed
   analysesContainer.addEventListener('click', handleAnalysisAction);
   if (analysisSearchInput) analysisSearchInput.addEventListener('input', applyFilters);
-  if (analysisTypeFilter) analysisTypeFilter.addEventListener('change', applyFilters);
+  
   if (favoritesOnly) favoritesOnly.addEventListener('change', applyFilters);
   if (competitorsContainer) {
     competitorsContainer.addEventListener('click', (e) => {
@@ -988,29 +987,23 @@ document.addEventListener('DOMContentLoaded', function() {
   // Filtering + competitors rendering
   function applyFilters() {
     const q = (analysisSearchInput?.value || '').toLowerCase().trim();
-    const type = analysisTypeFilter?.value || 'all';
     const favOnly = !!(favoritesOnly && favoritesOnly.checked);
     let list = currentAnalysesRaw.slice();
     if (dataSource === 'supabase') {
       list = list.filter(a => {
-        const matchesType = type === 'all' ||
-          (type === 'feature' && a.analysis_type === 'feature_extraction') ||
-          (type === 'pricing' && a.analysis_type === 'pricing_analysis') ||
-          (type === 'general' && a.analysis_type === 'general');
         const matchesFav = !favOnly || !!a.is_favorite;
         const hay = `${a.title || ''} ${a.domain || ''} ${a.content || ''}`.toLowerCase();
         const matchesQ = !q || hay.includes(q);
         const matchesDomain = !selectedDomainFilter || a.domain === selectedDomainFilter;
-        return matchesType && matchesFav && matchesQ && matchesDomain;
+        return matchesFav && matchesQ && matchesDomain;
       });
       displaySupabaseAnalyses(list);
     } else {
       list = list.filter(a => {
-        const matchesType = type === 'all' || a.type === type;
         const hay = `${a.title || ''} ${a.domain || ''} ${a.content || ''}`.toLowerCase();
         const matchesQ = !q || hay.includes(q);
         const matchesDomain = !selectedDomainFilter || a.domain === selectedDomainFilter;
-        return matchesType && matchesQ && matchesDomain;
+        return matchesQ && matchesDomain;
       });
       displayAnalyses(list);
     }
@@ -1060,6 +1053,8 @@ document.addEventListener('DOMContentLoaded', function() {
       return div.innerHTML;
     };
     
+    const excerpt = (analysis.content || '').slice(0, 240).replace(/\s+$/,'') + ((analysis.content || '').length > 240 ? '…' : '');
+
     div.innerHTML = `
       <div class="analysis-card-header">
         <div class="analysis-title">${escapeHtml(analysis.title)}</div>
@@ -1070,6 +1065,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <span>•</span>
         <span>${date}</span>
       </div>
+      <div class="analysis-excerpt">${escapeHtml(excerpt)}</div>
       <div class="analysis-actions">
         <button class="btn btn-secondary btn-sm" data-action="view">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
@@ -1084,6 +1080,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </svg>
           Copy
         </button>
+        ${analysis.url ? `<a class="btn btn-secondary btn-sm" data-action="open" href="${escapeHtml(analysis.url)}" target="_blank" rel="noopener" style="text-decoration:none;">Open Source</a>` : ''}
         <button class="btn btn-destructive btn-sm" data-action="delete">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
@@ -1130,6 +1127,7 @@ document.addEventListener('DOMContentLoaded', function() {
                       analysis.analysis_type === 'feature_extraction' ? 'badge-feature' : 'badge-general';
     
     const typeDisplay = analysis.analysis_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const excerpt = (analysis.content || '').slice(0, 240).replace(/\s+$/,'') + ((analysis.content || '').length > 240 ? '…' : '');
     
     div.innerHTML = `
       <div class="analysis-card-header">
@@ -1143,6 +1141,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ${analysis.is_favorite ? '<span>•</span><span style="color: gold;">★ Favorite</span>' : ''}
         ${analysis.tags && analysis.tags.length > 0 ? `<span>•</span><span>${analysis.tags.slice(0, 2).join(', ')}</span>` : ''}
       </div>
+      <div class="analysis-excerpt">${escapeHtml(excerpt)}</div>
       <div class="analysis-actions">
         <button class="btn btn-secondary btn-sm" data-action="view">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
@@ -1157,6 +1156,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </svg>
           Copy
         </button>
+        ${analysis.url ? `<a class="btn btn-secondary btn-sm" data-action="open" href="${escapeHtml(analysis.url)}" target="_blank" rel="noopener" style="text-decoration:none;">Open Source</a>` : ''}
         <button class="btn btn-secondary btn-sm" data-action="favorite" title="${analysis.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
           ${analysis.is_favorite ? '★' : '☆'}
         </button>
@@ -1226,7 +1226,8 @@ document.addEventListener('DOMContentLoaded', function() {
       <span>•</span>
       <span>${new Date(analysisData.timestamp).toLocaleString()}</span>
     `;
-    sidebarContent.textContent = analysisData.content;
+    // Render analysis content with lightweight markdown for readability
+    sidebarContent.innerHTML = renderMarkdownSafe(analysisData.content || '');
     
     // Store current analysis data for copying
     sidebarCopyBtn._currentAnalysis = analysisData.content;
