@@ -15,7 +15,36 @@ chrome.runtime.onInstalled.addListener(() => {
   cleanupStaleJobs();
   // Start tab redirect listener for Supabase OAuth
   setupOAuthListener();
+  // Rehydrate session on startup
+  rehydrateSession();
 });
+
+// Also rehydrate on startup (service worker activation)
+chrome.runtime.onStartup.addListener(() => {
+  rehydrateSession();
+});
+
+// Rehydrate existing session and set up auto-refresh
+async function rehydrateSession() {
+  try {
+    const { session } = await chrome.storage.local.get(['session']);
+    if (session?.refresh_token && session?.expires_at) {
+      // Check if session is still valid
+      const now = Math.floor(Date.now() / 1000);
+      if (session.expires_at > now) {
+        // Session is still valid, schedule refresh
+        scheduleTokenRefresh(session.expires_at);
+        console.log('Session rehydrated with auto-refresh scheduled');
+      } else {
+        // Session expired, try to refresh
+        console.log('Session expired on startup, attempting refresh');
+        await refreshSupabaseSession();
+      }
+    }
+  } catch (error) {
+    console.error('Failed to rehydrate session:', error);
+  }
+}
 
 // Clean up jobs older than 10 minutes
 async function cleanupStaleJobs() {
@@ -36,7 +65,12 @@ async function cleanupStaleJobs() {
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'openDashboard') {
-    chrome.runtime.openOptionsPage();
+    try {
+      const url = (typeof WEB_DASHBOARD_URL !== 'undefined' && WEB_DASHBOARD_URL) || 'http://localhost:3000';
+      chrome.tabs.create({ url });
+    } catch (_) {
+      chrome.runtime.openOptionsPage();
+    }
   }
 });
 
@@ -46,8 +80,9 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 // When user clicks notification, open dashboard to view/save
-chrome.notifications?.onClicked.addListener(() => {
-  chrome.runtime.openOptionsPage();
+  chrome.notifications?.onClicked.addListener(() => {
+  const url = (typeof WEB_DASHBOARD_URL !== 'undefined' && WEB_DASHBOARD_URL) || 'http://localhost:3000';
+  chrome.tabs.create({ url });
 });
 
 // Listen for long-running analysis requests so work continues even if popup closes
@@ -109,6 +144,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     deleteAnalysisBackground(message.id)
       .then((result) => sendResponse({ success: true, result }))
       .catch((error) => sendResponse({ success: false, error: error?.message || 'Failed to delete analysis' }));
+    return true;
+  }
+
+  if (message?.type === 'WEBAPP_AUTH_SUCCESS') {
+    // Properly sign in with the refresh token to establish a persistent session
+    establishSupabaseSession(message.session)
+      .then(() => {
+        console.log('Extension properly signed in with web app session');
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('Failed to establish Supabase session:', error);
+        sendResponse({ success: false, error: error?.message });
+      });
     return true;
   }
 
@@ -1268,6 +1317,220 @@ function estimateTokenCount(text) {
   if (!text) return 0;
   // Rough estimation: 4 characters per token on average
   return Math.ceil(text.length / 4);
+}
+
+// Get Supabase session from extension storage
+async function getSupabaseSession() {
+  try {
+    const result = await chrome.storage.local.get(['session']);
+    if (result.session && result.session.access_token) {
+      // Check if session is expired
+      const now = Math.floor(Date.now() / 1000);
+      if (result.session.expires_at && result.session.expires_at > now) {
+        return result.session;
+      } else {
+        // Clear expired session
+        await chrome.storage.local.remove('session');
+        return null;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting Supabase session:', error);
+    return null;
+  }
+}
+
+// Get Supabase configuration from storage or defaults
+async function getSupabaseConfig() {
+  const { supabase_url, supabase_anon_key } = await chrome.storage.sync.get(['supabase_url', 'supabase_anon_key']);
+  const SUPABASE_DEFAULT_URL = 'https://vznrzhawfqxytmasgzho.supabase.co';
+  const SUPABASE_DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnJ6aGF3ZnF4eXRtYXNnemhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTcxMzIsImV4cCI6MjA3MDI5MzEzMn0.PrAXIwD4Bb-sslWUbEMCJrBAgZtCprRkXixbQeYmnaI';
+  
+  return {
+    url: supabase_url || SUPABASE_DEFAULT_URL,
+    anonKey: supabase_anon_key || SUPABASE_DEFAULT_ANON_KEY
+  };
+}
+
+// Properly establish Supabase session with refresh token
+async function establishSupabaseSession(sessionFromWebApp) {
+  const { url: supabaseUrl, anonKey } = await getSupabaseConfig();
+  
+  if (!sessionFromWebApp?.refresh_token) {
+    throw new Error('No refresh token provided from web app');
+  }
+  
+  // Create a Supabase client for the extension
+  const supabase = createSupabaseClient(supabaseUrl, anonKey);
+  
+  // Sign in with the refresh token to get a fresh session
+  const { data, error } = await supabase.auth.setSession({
+    access_token: sessionFromWebApp.access_token,
+    refresh_token: sessionFromWebApp.refresh_token
+  });
+  
+  if (error) {
+    throw new Error(`Failed to set session: ${error.message}`);
+  }
+  
+  if (data.session) {
+    // Store the fresh session in extension storage
+    await chrome.storage.local.set({ 
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at,
+        user: data.session.user
+      }
+    });
+    
+    // Set up auto-refresh timer
+    scheduleTokenRefresh(data.session.expires_at);
+    
+    console.log('Extension session established with auto-refresh');
+    return data.session;
+  } else {
+    throw new Error('No session returned from Supabase');
+  }
+}
+
+// Create a minimal Supabase client for auth operations
+function createSupabaseClient(supabaseUrl, anonKey) {
+  return {
+    auth: {
+      async setSession({ access_token, refresh_token }) {
+        const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+          method: 'POST',
+          headers: {
+            'apikey': anonKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            refresh_token: refresh_token
+          })
+        });
+        
+        if (!response.ok) {
+          const error = await response.text().catch(() => 'Unknown error');
+          return { data: null, error: { message: `Auth error: ${response.status} ${error}` } };
+        }
+        
+        const result = await response.json();
+        return {
+          data: {
+            session: {
+              access_token: result.access_token,
+              refresh_token: result.refresh_token,
+              expires_at: result.expires_at,
+              user: result.user
+            }
+          },
+          error: null
+        };
+      },
+      
+      async refreshSession(refresh_token) {
+        return this.setSession({ access_token: '', refresh_token });
+      }
+    }
+  };
+}
+
+// Schedule token refresh before expiration
+function scheduleTokenRefresh(expires_at) {
+  // Clear any existing refresh timer
+  if (window.tokenRefreshTimer) {
+    clearTimeout(window.tokenRefreshTimer);
+  }
+  
+  if (!expires_at) return;
+  
+  // Refresh 5 minutes before expiry
+  const refreshTime = (expires_at * 1000) - Date.now() - (5 * 60 * 1000);
+  
+  if (refreshTime > 0) {
+    window.tokenRefreshTimer = setTimeout(async () => {
+      try {
+        await refreshSupabaseSession();
+      } catch (error) {
+        console.error('Token refresh failed:', error);
+      }
+    }, refreshTime);
+  }
+}
+
+// Refresh the Supabase session using stored refresh token
+async function refreshSupabaseSession() {
+  try {
+    const { session } = await chrome.storage.local.get(['session']);
+    if (!session?.refresh_token) {
+      console.warn('No refresh token available for refresh');
+      return;
+    }
+    
+    const { url: supabaseUrl, anonKey } = await getSupabaseConfig();
+    const supabase = createSupabaseClient(supabaseUrl, anonKey);
+    
+    const { data, error } = await supabase.auth.refreshSession(session.refresh_token);
+    
+    if (error) {
+      console.error('Failed to refresh session:', error);
+      // Clear invalid session
+      await chrome.storage.local.remove(['session']);
+      return;
+    }
+    
+    if (data.session) {
+      // Update stored session
+      await chrome.storage.local.set({
+        session: {
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          expires_at: data.session.expires_at,
+          user: data.session.user
+        }
+      });
+      
+      // Schedule next refresh
+      scheduleTokenRefresh(data.session.expires_at);
+      console.log('Session refreshed successfully');
+    }
+  } catch (error) {
+    console.error('Session refresh error:', error);
+  }
+}
+
+// Call OpenAI API via Supabase Edge Function
+async function callOpenAIViaEdgeFunction(payload) {
+  const { url: supabaseUrl } = await getSupabaseConfig();
+  let session = await getSupabaseSession();
+  
+  // Try to refresh session if expired
+  if (!session) {
+    await refreshSupabaseSession();
+    session = await getSupabaseSession();
+  }
+  
+  if (!session?.access_token) {
+    throw new Error('User not authenticated');
+  }
+  
+  const response = await fetch(`${supabaseUrl}/functions/v1/openai-proxy`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify(payload)
+  });
+  
+  if (!response.ok) {
+    const error = await response.text().catch(() => 'Unknown error');
+    throw new Error(`API call failed: ${response.status} ${error}`);
+  }
+  
+  return await response.json();
 }
 
 // -------- End Supabase Functions --------

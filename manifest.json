@@ -19,5 +19,10 @@
   "background": {
     "service_worker": "background.js"
   },
-  "options_page": "dashboard-new.html"
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:*/*", "https://*.vercel.app/*"],
+      "js": ["content-auth.js"]
+    }
+  ]
 }

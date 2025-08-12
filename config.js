@@ -7,6 +7,9 @@ const CONFIG = {
   TEMPERATURE: 0.3 // Lower temperature for more consistent analysis
 };
 
+// URL for external web dashboard
+const WEB_DASHBOARD_URL = 'http://localhost:3000';
+
 // Storage keys
 const STORAGE_KEYS = {
   API_KEY: 'openai_api_key',

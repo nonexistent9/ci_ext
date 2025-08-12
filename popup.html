@@ -110,19 +110,7 @@
     <h3>CI HQ</h3>
   </div>
   
-  <div id="authSection" style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">
-    <div style="display:flex; gap:8px;">
-      <input id="emailInput" class="api-input" type="email" placeholder="Email" />
-    </div>
-    <div style="display:flex; gap:8px;">
-      <input id="codeInput" class="api-input" type="text" inputmode="numeric" pattern="\\d{6}" maxlength="6" placeholder="6-digit code" />
-    </div>
-    <div style="display:flex; gap:8px;">
-      <button id="sendCodeBtn" class="dashboard-btn" style="background:#6f42c1; width:50%">Send code</button>
-      <button id="verifyCodeBtn" class="dashboard-btn" style="background:#198754; width:50%">Verify</button>
-    </div>
-  </div>
-  <div id="authStatus" class="status" style="display:none;"></div>
+  <div id="authStatus" class="status" style="margin-bottom: 12px;"></div>
   
   <button id="extractBtn" class="extract-btn">Extract Features</button>
   
@@ -130,18 +118,16 @@
   
   <div id="results" class="results" style="display: none;"></div>
   
-  <button id="copyBtn" class="copy-btn" style="display: none;">Copy to Clipboard</button>
+  <button id="sendToWebBtn" class="copy-btn" style="display: none; background: #fd7e14;">📤 Send to Web App</button>
   
-  <button id="saveBtn" class="copy-btn" style="display: none; background: #17a2b8;">Save Analysis</button>
+  <button id="saveBtn" class="copy-btn" style="display: none; background: #17a2b8;">💾 Quick Save</button>
   
-  <button id="dashboardBtn" class="dashboard-btn" style="display: none;">📊 View Dashboard</button>
+  <button id="copyBtn" class="copy-btn" style="display: none;">📋 Copy to Clipboard</button>
   
-  
-  <div style="text-align: right; margin-top: 16px;">
-    <a href="#" id="settingsBtn" style="color: #6c757d; font-size: 12px; text-decoration: none;">⚙️ Dashboard</a>
-  </div>
+  <button id="openWebDashboardBtn" class="dashboard-btn">🌐 Open Web App</button>
   
   <script src="config.js"></script>
   <script src="popup.js"></script>
+  <script src="dashboard-opener.js"></script>
 </body>
 </html>

@@ -4,13 +4,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const results = document.getElementById('results');
   const copyBtn = document.getElementById('copyBtn');
   const saveBtn = document.getElementById('saveBtn');
-  const settingsBtn = document.getElementById('settingsBtn');
-  const dashboardBtn = document.getElementById('dashboardBtn');
+  const sendToWebBtn = document.getElementById('sendToWebBtn');
   const authStatus = document.getElementById('authStatus');
-  const emailInput = document.getElementById('emailInput');
-  const sendCodeBtn = document.getElementById('sendCodeBtn');
-  const verifyCodeBtn = document.getElementById('verifyCodeBtn');
-  const codeInput = document.getElementById('codeInput');
   // Store the initial analysis and page data
   let currentAnalysis = '';
   let currentPageData = null;
@@ -18,11 +13,18 @@ document.addEventListener('DOMContentLoaded', function () {
   extractBtn.addEventListener('click', extractFeatures);
   copyBtn.addEventListener('click', copyToClipboard);
   saveBtn.addEventListener('click', saveAnalysis);
-  settingsBtn.addEventListener('click', openDashboard);
-  dashboardBtn.addEventListener('click', openDashboard);
+  sendToWebBtn.addEventListener('click', sendToWebApp);
 
-  // Auth UI setup
-  setupAuthUi();
+  // Check auth status on load and set up refresh listener
+  checkAuthStatus();
+  
+
+  // Listen for storage changes (when user logs in via web app)
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.session) {
+      checkAuthStatus();
+    }
+  });
 
   // Recover any in-progress or last results when popup opens
   (async () => {
@@ -82,73 +84,47 @@ document.addEventListener('DOMContentLoaded', function () {
       // Ignore recovery issues
     }
   })();
-  // ===== Supabase Auth (OAuth via new tab + background listener) =====
-  function setupAuthUi() {
-    refreshAuthUi();
-    sendCodeBtn?.addEventListener('click', handleSendCode);
-    verifyCodeBtn?.addEventListener('click', handleVerifyCode);
-  }
-
-  async function refreshAuthUi() {
+  // Simple auth status check
+  async function checkAuthStatus() {
     try {
       const sessionObj = await chrome.storage.local.get('session');
-      const isLoggedIn = !!sessionObj.session?.access_token;
-      const emailField = document.getElementById('emailInput');
-      if (emailField) emailField.disabled = isLoggedIn;
-      if (sendCodeBtn) sendCodeBtn.disabled = isLoggedIn;
-      if (verifyCodeBtn) verifyCodeBtn.disabled = isLoggedIn;
-      if (codeInput) codeInput.disabled = isLoggedIn;
+      const session = sessionObj.session;
+      
+      // Check if session exists and is not expired
+      let isLoggedIn = false;
+      if (session?.access_token && session?.expires_at) {
+        const now = Math.floor(Date.now() / 1000);
+        isLoggedIn = session.expires_at > now;
+        
+        // If session is expired, clear it
+        if (!isLoggedIn) {
+          console.log('Session expired, clearing storage');
+          await chrome.storage.local.remove('session');
+        }
+      }
+      
       if (isLoggedIn) {
-        authStatus.textContent = 'Signed in';
+        authStatus.textContent = '✅ Signed in - Ready for analysis';
         authStatus.className = 'status success';
         authStatus.style.display = 'block';
       } else {
-        authStatus.textContent = 'Not signed in';
-        authStatus.className = 'status';
+        authStatus.innerHTML = '⚠️ Please <a href="#" id="loginLink" style="color: #007cba; text-decoration: underline;">sign in via web app</a> for AI features';
+        authStatus.className = 'status error';
         authStatus.style.display = 'block';
+        
+        // Add click handler for login link
+        document.getElementById('loginLink')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          const url = (typeof WEB_DASHBOARD_URL !== 'undefined' && WEB_DASHBOARD_URL) || 'http://localhost:3000';
+          chrome.tabs.create({ url });
+        });
       }
-    } catch (_) {}
-  }
-
-  // Removed email/password sign-in and sign-up handlers
-
-  async function handleSendCode() {
-    const email = (emailInput?.value || '').trim();
-    if (!email) {
-      showStatus('Enter your email', 'error');
-      return;
-    }
-    try {
-      sendCodeBtn.disabled = true;
-      await supabaseSendEmailOtp(email);
-      showStatus('Code sent. Check your email.', 'success');
     } catch (e) {
-      showStatus('Failed to send code: ' + (e?.message || 'Unknown'), 'error');
-    } finally {
-      sendCodeBtn.disabled = false;
+      authStatus.textContent = '⚠️ Authentication check failed';
+      authStatus.className = 'status error';
+      authStatus.style.display = 'block';
     }
   }
-
-  async function handleVerifyCode() {
-    const email = (emailInput?.value || '').trim();
-    const token = (codeInput?.value || '').trim();
-    if (!email || !token) {
-      showStatus('Enter email and 6-digit code', 'error');
-      return;
-    }
-    try {
-      verifyCodeBtn.disabled = true;
-      await supabaseVerifyEmailOtp(email, token);
-      await refreshAuthUi();
-      showStatus('Signed in successfully!', 'success');
-    } catch (e) {
-      showStatus('Verification failed: ' + (e?.message || 'Unknown'), 'error');
-    } finally {
-      verifyCodeBtn.disabled = false;
-    }
-  }
-
-  // Logout is handled in the dashboard
 
   
 
@@ -160,10 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
       // Check if user is logged in instead of API key
       const session = await getSupabaseSession();
       if (!session?.access_token) {
-        showStatus('Please log in to use AI analysis features.', 'error');
-        setTimeout(() => {
-          openDashboard();
-        }, 1500);
+        showStatus('Please sign in via web app to use AI analysis features.', 'error');
         return;
       }
 
@@ -216,16 +189,16 @@ document.addEventListener('DOMContentLoaded', function () {
     currentAnalysis = features;
     results.textContent = features;
     results.style.display = 'block';
-    copyBtn.style.display = 'block';
+    sendToWebBtn.style.display = 'block';
     saveBtn.style.display = 'block';
-    dashboardBtn.style.display = 'block';
+    copyBtn.style.display = 'block';
   }
 
   function copyToClipboard() {
     navigator.clipboard.writeText(results.textContent).then(() => {
-      copyBtn.textContent = 'Copied!';
+      copyBtn.textContent = '✅ Copied!';
       setTimeout(() => {
-        copyBtn.textContent = 'Copy to Clipboard';
+        copyBtn.textContent = '📋 Copy to Clipboard';
       }, 2000);
     });
   }
@@ -252,16 +225,69 @@ document.addEventListener('DOMContentLoaded', function () {
         throw new Error(response?.error || 'Failed to save analysis');
       }
 
-      saveBtn.textContent = 'Saved!';
-      showStatus('Analysis saved to Supabase', 'success');
+      saveBtn.textContent = '✅ Saved!';
+      showStatus('Quick save to Supabase completed', 'success');
 
       setTimeout(() => {
-        saveBtn.textContent = 'Save Analysis';
+        saveBtn.textContent = '💾 Quick Save';
       }, 2000);
 
     } catch (error) {
       console.error('Error saving analysis:', error);
       showStatus('Error saving analysis: ' + error.message, 'error');
+    }
+  }
+
+  async function sendToWebApp() {
+    try {
+      if (!currentPageData) {
+        showStatus('No page data to send', 'error');
+        return;
+      }
+
+      // Check if user is logged in
+      const session = await getSupabaseSession();
+      if (!session?.access_token) {
+        showStatus('Please sign in via web app first.', 'error');
+        return;
+      }
+
+      sendToWebBtn.textContent = 'Sending...';
+      showStatus('Sending page data to web app for analysis...', 'loading');
+
+      // Send page data to web app for analysis
+      const webAppUrl = (typeof WEB_DASHBOARD_URL !== 'undefined' && WEB_DASHBOARD_URL) || 'http://localhost:3000';
+      const response = await fetch(`${webAppUrl}/api/extension-analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageData: currentPageData,
+          accessToken: session.access_token
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send to web app');
+      }
+
+      const result = await response.json();
+      
+      sendToWebBtn.textContent = '✅ Sent!';
+      showStatus('Analysis sent to web app successfully!', 'success');
+      
+      // Open the web app to view the analysis
+      setTimeout(() => {
+        chrome.tabs.create({ url: webAppUrl });
+      }, 1000);
+
+      setTimeout(() => {
+        sendToWebBtn.textContent = '📤 Send to Web App';
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error sending to web app:', error);
+      showStatus('Error sending to web app: ' + error.message, 'error');
+      sendToWebBtn.textContent = '📤 Send to Web App';
     }
   }
 
@@ -332,11 +358,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // Removed page-context extractor from popup; background owns it
 
-// API Key management functions
-function openDashboard() {
-  chrome.runtime.openOptionsPage();
-}
-
 async function getStoredApiKey() {
   try {
     const result = await chrome.storage.sync.get(['openai_api_key']);
@@ -401,5 +422,28 @@ async function getCompanyContext() {
   } catch (error) {
     console.error('Error getting company context:', error);
     return ''; // Fallback to empty string
+  }
+}
+
+
+// Get Supabase session from extension storage
+async function getSupabaseSession() {
+  try {
+    const result = await chrome.storage.local.get(['session']);
+    if (result.session && result.session.access_token) {
+      // Check if session is expired
+      const now = Math.floor(Date.now() / 1000);
+      if (result.session.expires_at && result.session.expires_at > now) {
+        return result.session;
+      } else {
+        // Clear expired session
+        await chrome.storage.local.remove('session');
+        return null;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting Supabase session:', error);
+    return null;
   }
 }

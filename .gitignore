@@ -10,6 +10,16 @@ lerna-debug.log*
 node_modules/
 jspm_packages/
 
+# Build output (Next.js, SWC, Vercel, Turbopack)
+.next/
+.swc/
+.turbo/
+.vercel/
+out/
+coverage/
+ci-dashboard/.next/
+ci-dashboard/node_modules/
+
 # Optional npm cache directory
 .npm
 
@@ -19,6 +29,10 @@ jspm_packages/
 # dotenv environment variables file
 .env
 .env.test
+.env.local
+.env.production
+.env.development
+.env.*.local
 
 # OS specific files
 .DS_Store
@@ -41,8 +55,6 @@ Thumbs.db
 *.p12
 config.local.js
 secrets.js
-.env.local
-.env.production
 
 # User data and logs
 user_data/
