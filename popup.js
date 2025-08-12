@@ -88,16 +88,22 @@ document.addEventListener('DOMContentLoaded', function () {
       const sessionObj = await chrome.storage.local.get('session');
       const session = sessionObj.session;
       
-      // Check if session exists and is not expired
+      // Check if session exists and has access token
       let isLoggedIn = false;
-      if (session?.access_token && session?.expires_at) {
-        const now = Math.floor(Date.now() / 1000);
-        isLoggedIn = session.expires_at > now;
-        
-        // If session is expired, clear it
-        if (!isLoggedIn) {
-          console.log('Session expired, clearing storage');
-          await chrome.storage.local.remove('session');
+      if (session?.access_token) {
+        // Check expiration if available, otherwise assume valid for now
+        if (session.expires_at) {
+          const now = Math.floor(Date.now() / 1000);
+          isLoggedIn = session.expires_at > now;
+          
+          // If session is expired, clear it
+          if (!isLoggedIn) {
+            console.log('Session expired, clearing storage');
+            await chrome.storage.local.remove('session');
+          }
+        } else {
+          // No expiration info, assume valid (will be verified on actual API calls)
+          isLoggedIn = true;
         }
       }
       
