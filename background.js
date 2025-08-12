@@ -240,12 +240,36 @@ async function startBackgroundAnalysis(payload) {
   }
 
   const model = await getInitialModel();
+  // Build system instructions and incorporate user preferences so they have higher priority
+  let systemContent = 'You are a feature extraction specialist. Your job is to quickly identify and summarize the key features, capabilities, and pricing information from competitor websites. Be concise and factual.';
+  if (analysisPreferences) {
+    const prefs = analysisPreferences || {};
+    if (prefs.includeActionableInsights) {
+      systemContent += ' Always include 3–5 concrete, prioritized, actionable recommendations tailored to the user\'s company context if provided.';
+    } else {
+      // Default behavior when not requesting actionable recs is to avoid strategy
+      systemContent += ' Avoid strategic analysis or deep insights—focus on extracting the core information clearly.';
+    }
+    if (prefs.focusOnDifferentiators) {
+      systemContent += ' Emphasize unique competitive differentiators and key distinguishing factors.';
+    }
+    if (prefs.includeMarketContext) {
+      systemContent += ' When relevant, include brief broader market context and industry trends.';
+    }
+    if (prefs.prioritizeThreats) {
+      systemContent += ' Prioritize identification of competitive threats and market opportunities.';
+    }
+  } else {
+    // Preserve previous default if no preferences saved
+    systemContent += ' Avoid strategic analysis or deep insights—focus on extracting the core information clearly.';
+  }
+
   const requestBody = {
     model,
     messages: [
       {
         role: 'system',
-        content: 'You are a feature extraction specialist. Your job is to quickly identify and summarize the key features, capabilities, and pricing information from competitor websites. Be concise and factual. Avoid strategic analysis or deep insights - just extract the core information clearly.'
+        content: systemContent
       },
       { role: 'user', content: prompt }
     ]

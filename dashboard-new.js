@@ -1080,7 +1080,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </svg>
           Copy
         </button>
-        ${analysis.url ? `<a class="btn btn-secondary btn-sm" data-action="open" href="${escapeHtml(analysis.url)}" target="_blank" rel="noopener" style="text-decoration:none;">Open Source</a>` : ''}
+        ${analysis.url ? `<a class="btn btn-secondary btn-sm" data-action="open" href="${escapeHtml(analysis.url)}" target="_blank" rel="noopener" style="text-decoration:none;">Open Site</a>` : ''}
         <button class="btn btn-destructive btn-sm" data-action="delete">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
@@ -1156,7 +1156,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </svg>
           Copy
         </button>
-        ${analysis.url ? `<a class="btn btn-secondary btn-sm" data-action="open" href="${escapeHtml(analysis.url)}" target="_blank" rel="noopener" style="text-decoration:none;">Open Source</a>` : ''}
+        ${analysis.url ? `<a class="btn btn-secondary btn-sm" data-action="open" href="${escapeHtml(analysis.url)}" target="_blank" rel="noopener" style="text-decoration:none;">Open Site</a>` : ''}
         <button class="btn btn-secondary btn-sm" data-action="favorite" title="${analysis.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">
           ${analysis.is_favorite ? '★' : '☆'}
         </button>
