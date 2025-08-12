@@ -1,10 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
-  },
-  // Ensure compatibility with Cloudflare Pages
+  serverExternalPackages: ['@supabase/supabase-js'],
   images: {
     domains: ['localhost'],
     unoptimized: process.env.NODE_ENV === 'production',
