@@ -4,7 +4,9 @@
 console.log('Content script loaded on:', window.location.href);
 
 // Check if we're on the CI dashboard domain
-if (window.location.hostname === 'localhost' || window.location.hostname.includes('vercel.app')) {
+if (window.location.hostname === 'localhost' || 
+    window.location.hostname.includes('vercel.app') || 
+    window.location.hostname === 'dashboard.getcihq.com') {
   
   function syncAuthToExtension() {
     try {

@@ -21,7 +21,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://localhost:*/*", "https://*.vercel.app/*"],
+      "matches": ["http://localhost:*/*", "https://*.vercel.app/*", "https://dashboard.getcihq.com/*"],
       "js": ["content-auth.js"]
     }
   ]

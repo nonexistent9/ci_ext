@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
+    "@cloudflare/next-on-pages": "^1.13.13",
     "@supabase/supabase-js": "^2.55.0",
     "acorn": "^8.15.0",
     "acorn-jsx": "^5.3.2",
@@ -279,8 +280,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:cloudflare": "npx @cloudflare/next-on-pages",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "preview": "npx wrangler pages dev .vercel/output/static --compatibility-date=2024-01-15 --compatibility-flags=nodejs_compat"
   },
   "keywords": [],
   "author": "",

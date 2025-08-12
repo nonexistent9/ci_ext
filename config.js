@@ -8,6 +8,7 @@ const CONFIG = {
 };
 
 // URL for external web dashboard
+// For production, change this to 'https://dashboard.getcihq.com'
 const WEB_DASHBOARD_URL = 'http://localhost:3000';
 
 // Storage keys
