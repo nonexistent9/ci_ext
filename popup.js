@@ -4,7 +4,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const results = document.getElementById('results');
   const copyBtn = document.getElementById('copyBtn');
   const saveBtn = document.getElementById('saveBtn');
-  const sendToWebBtn = document.getElementById('sendToWebBtn');
   const authStatus = document.getElementById('authStatus');
   // Store the initial analysis and page data
   let currentAnalysis = '';
@@ -13,7 +12,6 @@ document.addEventListener('DOMContentLoaded', function () {
   extractBtn.addEventListener('click', extractFeatures);
   copyBtn.addEventListener('click', copyToClipboard);
   saveBtn.addEventListener('click', saveAnalysis);
-  sendToWebBtn.addEventListener('click', sendToWebApp);
 
   // Check auth status on load and set up refresh listener
   checkAuthStatus();
@@ -189,7 +187,6 @@ document.addEventListener('DOMContentLoaded', function () {
     currentAnalysis = features;
     results.textContent = features;
     results.style.display = 'block';
-    sendToWebBtn.style.display = 'block';
     saveBtn.style.display = 'block';
     copyBtn.style.display = 'block';
   }
@@ -238,58 +235,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  async function sendToWebApp() {
-    try {
-      if (!currentPageData) {
-        showStatus('No page data to send', 'error');
-        return;
-      }
-
-      // Check if user is logged in
-      const session = await getSupabaseSession();
-      if (!session?.access_token) {
-        showStatus('Please sign in via web app first.', 'error');
-        return;
-      }
-
-      sendToWebBtn.textContent = 'Sending...';
-      showStatus('Sending page data to web app for analysis...', 'loading');
-
-      // Send page data to web app for analysis
-      const webAppUrl = (typeof WEB_DASHBOARD_URL !== 'undefined' && WEB_DASHBOARD_URL) || 'http://localhost:3000';
-      const response = await fetch(`${webAppUrl}/api/extension-analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pageData: currentPageData,
-          accessToken: session.access_token
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to send to web app');
-      }
-
-      const result = await response.json();
-      
-      sendToWebBtn.textContent = '✅ Sent!';
-      showStatus('Analysis sent to web app successfully!', 'success');
-      
-      // Open the web app to view the analysis
-      setTimeout(() => {
-        chrome.tabs.create({ url: webAppUrl });
-      }, 1000);
-
-      setTimeout(() => {
-        sendToWebBtn.textContent = '📤 Send to Web App';
-      }, 3000);
-
-    } catch (error) {
-      console.error('Error sending to web app:', error);
-      showStatus('Error sending to web app: ' + error.message, 'error');
-      sendToWebBtn.textContent = '📤 Send to Web App';
-    }
-  }
 
 
   // This function is no longer used as we're using AI for feature extraction
