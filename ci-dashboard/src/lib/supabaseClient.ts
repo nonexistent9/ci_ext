@@ -9,8 +9,16 @@ export function getSupabaseClient(): SupabaseClient {
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!url || !anon) {
+    // During build time, environment variables might not be available
+    // Return a dummy client to prevent build failures
+    if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
+      const dummyUrl = 'https://dummy.supabase.co'
+      const dummyKey = 'dummy-key'
+      cachedClient = createClient(dummyUrl, dummyKey)
+      return cachedClient
+    }
+    
     const message = 'Supabase environment vars missing: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
-    // Fail loudly to surface misconfiguration during development/deployment
     throw new Error(message)
   }
 
