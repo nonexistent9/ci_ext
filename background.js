@@ -1437,11 +1437,15 @@ function createSupabaseClient(supabaseUrl, anonKey) {
   };
 }
 
+// Global timer reference for service worker
+let tokenRefreshTimer = null;
+
 // Schedule token refresh before expiration
 function scheduleTokenRefresh(expires_at) {
   // Clear any existing refresh timer
-  if (window.tokenRefreshTimer) {
-    clearTimeout(window.tokenRefreshTimer);
+  if (tokenRefreshTimer) {
+    clearTimeout(tokenRefreshTimer);
+    tokenRefreshTimer = null;
   }
   
   if (!expires_at) return;
@@ -1450,13 +1454,14 @@ function scheduleTokenRefresh(expires_at) {
   const refreshTime = (expires_at * 1000) - Date.now() - (5 * 60 * 1000);
   
   if (refreshTime > 0) {
-    window.tokenRefreshTimer = setTimeout(async () => {
+    tokenRefreshTimer = setTimeout(async () => {
       try {
         await refreshSupabaseSession();
       } catch (error) {
         console.error('Token refresh failed:', error);
       }
     }, refreshTime);
+    console.log(`Token refresh scheduled in ${Math.round(refreshTime / 1000 / 60)} minutes`);
   }
 }
 
