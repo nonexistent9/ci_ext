@@ -190,205 +190,354 @@ export default function DashboardPage() {
   }, [sidebarOpen]);
 
   return (
-    <main className="flex">
-      <Sidebar />
-      <div className="flex-1 p-6">
-      <h1 className="text-2xl font-semibold">Your Dashboard</h1>
-      {requiresLogin && (
-        <p>Please <a href="/login">log in</a> to view your dashboard.</p>
-      )}
-      {error && <p className="text-red-600">{error}</p>}
-      
-      {/* Analysis Input Section */}
-      <div className="mt-6 mb-6">
-        <h2 className="text-lg font-medium mb-3">Analyze New Website</h2>
-        <div className="flex items-center gap-3">
-          <input
-            type="url"
-            placeholder="Enter website URL to analyze (e.g., https://example.com)"
-            value={analysisUrl}
-            onChange={(e) => setAnalysisUrl(e.target.value)}
-            className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
-            disabled={analyzing}
-          />
-          <Button 
-            onClick={performAnalysis} 
-            disabled={analyzing || !analysisUrl.trim()}
-          >
-            {analyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          Enter a competitor website URL to extract features, pricing, and key information.
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-gray-400 via-gray-300 to-gray-200">
+      {/* Background pattern */}
+      <div className="fixed inset-0 opacity-30 pointer-events-none">
+        <div className="absolute inset-0" style={{
+          backgroundImage: `
+            repeating-linear-gradient(90deg, transparent, transparent 98px, rgba(0,0,0,0.03) 100px),
+            repeating-linear-gradient(0deg, transparent, transparent 98px, rgba(0,0,0,0.03) 100px)
+          `
+        }}></div>
       </div>
 
-      <div className="mt-3 flex items-center gap-3">
-        <input
-          placeholder="Search title, domain, or URL"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="h-9 min-w-[260px] rounded-md border border-input bg-background px-3 text-sm"
-        />
-        <label className="flex items-center gap-2 text-sm text-foreground/80">
-          <input type="checkbox" checked={favoritesOnly} onChange={(e) => setFavoritesOnly(e.target.checked)} /> Favorites
-        </label>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {domainCounts.map(([domain, count]) => (
-          <Button
-            key={domain}
-            onClick={() => setSelectedDomain(selectedDomain === domain ? null : domain)}
-            variant={selectedDomain === domain ? 'default' : 'outline'}
-            size="sm"
-          >
-            {domain} <span className="opacity-60">({count})</span>
-          </Button>
-        ))}
-      </div>
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Recent Analyses</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="text-left text-sm text-muted-foreground border-b">
-                  <th className="py-2 pr-2">Title</th>
-                  <th className="py-2 pr-2">Domain</th>
-                  <th className="py-2 pr-2">Type</th>
-                  <th className="py-2 pr-2">Content</th>
-                  <th className="py-2 pr-2">Created</th>
-                  <th className="py-2 pr-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(loading ? [] : filtered).map((a) => (
-                  <tr key={a.id} className="border-b">
-                    <td className="py-2 pr-2 align-top">
-                      <a 
-                        href={a.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary underline-offset-2 hover:underline"
-                      >
-                        {a.title}
-                      </a>
-                      <div className="text-xs text-muted-foreground">{a.url}</div>
-                    </td>
-                    <td className="py-2 pr-2 align-top">{a.domain}</td>
-                    <td className="py-2 pr-2 align-top capitalize">{a.analysis_type.replace('_', ' ')}</td>
-                    <td className="py-2 pr-2 align-top max-w-[520px]">
-                      <div className="text-sm text-muted-foreground break-words">
-                        {a.content ? (a.content.length > 220 ? `${a.content.slice(0, 220)}…` : a.content) : '—'}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      {new Date(a.created_at).toLocaleString('en-US', {
-                        year: 'numeric', month: '2-digit', day: '2-digit',
-                        hour: '2-digit', minute: '2-digit', second: '2-digit',
-                        hour12: false,
-                        timeZone: 'UTC'
-                      })}
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => openAnalysisSidebar(a.id)}
-                          className="text-sm text-primary underline underline-offset-2"
-                        >
-                          View
-                        </button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => confirmAndDelete(a.id)}
-                          disabled={deletingId === a.id}
-                          aria-busy={deletingId === a.id}
-                        >
-                          {deletingId === a.id ? 'Deleting…' : 'Delete'}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!loading && filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-6 text-center text-muted-foreground">No analyses yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+      <main className="flex relative">
+        <Sidebar />
+        <div className="flex-1 p-6">
+          {/* Header with 90s styling */}
+          <div className="bg-gray-200 border-4 border-gray-400 mb-6 shadow-lg" style={{
+            borderStyle: 'outset'
+          }}>
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-3 border-b-2 border-gray-400" style={{
+              borderBottomStyle: 'inset'
+            }}>
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <div className="w-3 h-3 bg-red-500 rounded-full border border-red-700"></div>
+                  <div className="w-3 h-3 bg-yellow-500 rounded-full border border-yellow-700"></div>
+                  <div className="w-3 h-3 bg-green-500 rounded-full border border-green-700"></div>
+                </div>
+                <span className="text-sm font-mono">CI_HQ_DASHBOARD.exe</span>
+              </div>
+            </div>
+            <div className="p-4">
+              <h1 className="text-2xl font-bold text-gray-800 font-mono" style={{
+                textShadow: '2px 2px 0px #ffffff'
+              }}>
+                🎯 YOUR DASHBOARD
+              </h1>
+              <div className="text-sm text-gray-600 mt-1">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+            </div>
           </div>
-        </CardContent>
-      </Card>
-      </div>
 
-      {/* Analysis Sidebar */}
+          {requiresLogin && (
+            <div className="bg-red-100 border-4 border-red-400 p-4 mb-4 font-mono text-red-800" style={{
+              borderStyle: 'inset'
+            }}>
+              ⚠️ Please <a href="/login" className="underline font-bold">log in</a> to view your dashboard.
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-100 border-4 border-red-400 p-4 mb-4 font-mono text-red-800" style={{
+              borderStyle: 'inset'
+            }}>
+              💥 ERROR: {error}
+            </div>
+          )}
+          
+          {/* Analysis Input Section */}
+          <div className="bg-gray-200 border-4 border-gray-400 mb-6 shadow-lg" style={{
+            borderStyle: 'outset'
+          }}>
+            <div className="bg-gray-300 border-b-2 border-gray-400 px-4 py-2" style={{
+              borderBottomStyle: 'inset'
+            }}>
+              <h2 className="font-bold text-gray-800 font-mono">📡 ANALYZE NEW WEBSITE</h2>
+            </div>
+            <div className="p-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-2">
+                <input
+                  type="url"
+                  placeholder="Enter website URL to analyze (e.g., https://example.com)"
+                  value={analysisUrl}
+                  onChange={(e) => setAnalysisUrl(e.target.value)}
+                  className="flex-1 p-3 border-2 border-gray-400 font-mono text-sm min-w-0"
+                  style={{ borderStyle: 'inset' }}
+                  disabled={analyzing}
+                />
+                <button
+                  onClick={performAnalysis} 
+                  disabled={analyzing || !analysisUrl.trim()}
+                  className="px-6 py-3 bg-blue-500 text-white font-bold border-2 border-gray-400 font-mono text-sm hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                  style={{ borderStyle: 'outset' }}
+                >
+                  {analyzing ? '⏳ ANALYZING...' : '🚀 ANALYZE'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-600 font-mono">
+                Enter a competitor website URL to extract features, pricing, and key information.
+              </p>
+            </div>
+          </div>
+
+          {/* Search and Filters */}
+          <div className="bg-gray-200 border-4 border-gray-400 mb-6 shadow-lg" style={{
+            borderStyle: 'outset'
+          }}>
+            <div className="bg-gray-300 border-b-2 border-gray-400 px-4 py-2" style={{
+              borderBottomStyle: 'inset'
+            }}>
+              <h3 className="font-bold text-gray-800 font-mono">🔍 SEARCH & FILTERS</h3>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <input
+                  placeholder="Search title, domain, or URL"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="flex-1 p-2 border-2 border-gray-400 font-mono text-sm min-w-0"
+                  style={{ borderStyle: 'inset' }}
+                />
+                <label className="flex items-center gap-2 text-sm font-mono text-gray-700 bg-white p-2 border-2 border-gray-400 whitespace-nowrap" style={{
+                  borderStyle: 'outset'
+                }}>
+                  <input 
+                    type="checkbox" 
+                    checked={favoritesOnly} 
+                    onChange={(e) => setFavoritesOnly(e.target.checked)}
+                    className="w-4 h-4"
+                  /> 
+                  ⭐ FAVORITES
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {domainCounts.map(([domain, count]) => (
+                  <button
+                    key={domain}
+                    onClick={() => setSelectedDomain(selectedDomain === domain ? null : domain)}
+                    className={`px-2 py-1 font-mono text-xs border-2 border-gray-400 whitespace-nowrap ${
+                      selectedDomain === domain 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                    style={{ borderStyle: 'outset' }}
+                  >
+                    {domain} ({count})
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Results Table */}
+          <div className="bg-gray-200 border-4 border-gray-400 shadow-lg" style={{
+            borderStyle: 'outset'
+          }}>
+            <div className="bg-gray-300 border-b-2 border-gray-400 px-4 py-2" style={{
+              borderBottomStyle: 'inset'
+            }}>
+              <h3 className="font-bold text-gray-800 font-mono">📊 RECENT ANALYSES</h3>
+            </div>
+            <div className="p-4">
+              <div className="overflow-x-auto bg-white border-2 border-gray-400" style={{
+                borderStyle: 'inset'
+              }}>
+                <table className="w-full border-collapse font-mono text-sm min-w-[800px]">
+                  <thead>
+                    <tr className="bg-gray-100 border-b-2 border-gray-300">
+                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[25%]">TITLE</th>
+                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[12%]">DOMAIN</th>
+                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[10%]">TYPE</th>
+                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[25%]">CONTENT</th>
+                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[13%]">CREATED</th>
+                      <th className="py-2 px-2 text-left font-bold text-gray-700 w-[15%]">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(loading ? [] : filtered).map((a) => (
+                      <tr key={a.id} className="border-b border-gray-200 hover:bg-gray-50">
+                        <td className="py-2 px-2 align-top border-r border-gray-200 w-[25%]">
+                          <a 
+                            href={a.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 hover:underline font-semibold block truncate"
+                            title={a.title}
+                          >
+                            {a.title}
+                          </a>
+                          <div className="text-xs text-gray-500 mt-1 truncate" title={a.url}>
+                            {a.url}
+                          </div>
+                        </td>
+                        <td className="py-2 px-2 align-top border-r border-gray-200 text-gray-700 w-[12%] truncate" title={a.domain}>
+                          {a.domain}
+                        </td>
+                        <td className="py-2 px-2 align-top border-r border-gray-200 w-[10%]">
+                          <span className="bg-blue-100 text-blue-800 px-1 py-1 rounded text-xs uppercase block text-center">
+                            {a.analysis_type.replace('_', ' ').substring(0, 8)}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2 align-top border-r border-gray-200 w-[25%]">
+                          <div className="text-xs text-gray-600 line-clamp-3" title={a.content || ''}>
+                            {a.content ? (a.content.length > 100 ? `${a.content.slice(0, 100)}…` : a.content) : '—'}
+                          </div>
+                        </td>
+                        <td className="py-2 px-2 align-top border-r border-gray-200 text-xs text-gray-600 w-[13%]">
+                          <div className="whitespace-nowrap">
+                            {new Date(a.created_at).toLocaleDateString('en-US', {
+                              year: '2-digit', month: '2-digit', day: '2-digit'
+                            })}
+                          </div>
+                          <div className="whitespace-nowrap">
+                            {new Date(a.created_at).toLocaleTimeString('en-US', {
+                              hour: '2-digit', minute: '2-digit', hour12: false
+                            })}
+                          </div>
+                        </td>
+                        <td className="py-2 px-2 align-top w-[15%]">
+                          <div className="flex flex-col gap-1">
+                            <button 
+                              onClick={() => openAnalysisSidebar(a.id)}
+                              className="px-2 py-1 bg-green-500 text-white text-xs font-bold border border-gray-400 hover:bg-green-600 w-full"
+                              style={{ borderStyle: 'outset' }}
+                            >
+                              VIEW
+                            </button>
+                            <button
+                              onClick={() => confirmAndDelete(a.id)}
+                              disabled={deletingId === a.id}
+                              className="px-2 py-1 bg-red-500 text-white text-xs font-bold border border-gray-400 hover:bg-red-600 disabled:bg-gray-400 w-full"
+                              style={{ borderStyle: 'outset' }}
+                            >
+                              {deletingId === a.id ? 'DEL...' : 'DEL'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {!loading && filtered.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-gray-500 font-mono">
+                          💭 No analyses yet. Start by analyzing a competitor website above!
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      {/* Analysis Sidebar - 90s styled */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50">
           {/* Backdrop */}
           <div 
-            className="absolute inset-0 bg-black/50" 
+            className="absolute inset-0 bg-black/60" 
             onClick={closeSidebar}
           ></div>
           
           {/* Sidebar */}
-          <div className="absolute right-0 top-0 w-1/2 max-w-2xl bg-white shadow-xl overflow-hidden flex flex-col h-full z-10">
+          <div className="absolute right-4 top-4 bottom-4 w-1/2 max-w-2xl bg-gray-200 border-4 border-gray-400 shadow-2xl overflow-hidden flex flex-col z-10" style={{
+            borderStyle: 'outset'
+          }}>
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-              <h2 className="text-lg font-semibold text-gray-800">Analysis Details</h2>
-              <button 
-                onClick={closeSidebar}
-                className="text-gray-400 hover:text-gray-600 text-2xl leading-none p-1 hover:bg-gray-200 rounded"
-                title="Close"
-              >
-                ×
-              </button>
+            <div className="bg-gradient-to-r from-green-600 to-blue-600 text-white p-3 border-b-2 border-gray-400" style={{
+              borderBottomStyle: 'inset'
+            }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <div className="w-3 h-3 bg-red-500 rounded-full border border-red-700"></div>
+                    <div className="w-3 h-3 bg-yellow-500 rounded-full border border-yellow-700"></div>
+                    <div className="w-3 h-3 bg-green-500 rounded-full border border-green-700"></div>
+                  </div>
+                  <span className="text-sm font-mono">ANALYSIS_VIEWER.exe</span>
+                </div>
+                <button 
+                  onClick={closeSidebar}
+                  className="bg-red-500 hover:bg-red-600 text-white w-6 h-6 border border-red-700 font-mono text-sm font-bold"
+                  style={{ borderStyle: 'outset' }}
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
             </div>
             
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-100">
               {selectedAnalysis ? (
                 <div>
-                  <div className="mb-6">
-                    <h3 className="text-xl font-semibold mb-2 text-gray-900">{selectedAnalysis.title}</h3>
-                    <div className="text-sm text-blue-600 mb-3 break-all">
+                  {/* Header section with 90s styling */}
+                  <div className="bg-white border-2 border-gray-400 p-4 mb-4 shadow-sm" style={{
+                    borderStyle: 'inset'
+                  }}>
+                    <h3 className="text-lg font-bold text-gray-800 mb-2 font-mono" style={{
+                      textShadow: '1px 1px 0px #ffffff'
+                    }}>
+                      📄 {selectedAnalysis.title}
+                    </h3>
+                    <div className="text-sm text-blue-600 mb-3 break-all font-mono">
                       <a href={selectedAnalysis.url} target="_blank" rel="noreferrer" className="hover:underline">
-                        {selectedAnalysis.url}
+                        🔗 {selectedAnalysis.url}
                       </a>
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full">{selectedAnalysis.domain}</span>
-                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full capitalize">
-                        {selectedAnalysis.analysis_type.replace('_', ' ')}
+                      <span className="bg-gray-300 text-gray-800 px-2 py-1 border border-gray-400 font-mono font-bold" style={{
+                        borderStyle: 'outset'
+                      }}>
+                        🌐 {selectedAnalysis.domain}
                       </span>
-                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full">
-                        {new Date(selectedAnalysis.created_at).toLocaleDateString()}
+                      <span className="bg-blue-300 text-blue-800 px-2 py-1 border border-blue-400 font-mono font-bold uppercase" style={{
+                        borderStyle: 'outset'
+                      }}>
+                        📊 {selectedAnalysis.analysis_type.replace('_', ' ')}
+                      </span>
+                      <span className="bg-green-300 text-green-800 px-2 py-1 border border-green-400 font-mono font-bold" style={{
+                        borderStyle: 'outset'
+                      }}>
+                        📅 {new Date(selectedAnalysis.created_at).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
                   
-                  <div className="bg-white">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">Analysis Report</h4>
-                    <div className="bg-gray-50 rounded-lg p-4 border">
-                      <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed overflow-x-auto">
-                        {selectedAnalysis.content}
-                      </pre>
+                  {/* Report section */}
+                  <div className="bg-white border-2 border-gray-400 shadow-sm" style={{
+                    borderStyle: 'inset'
+                  }}>
+                    <div className="bg-gray-300 border-b-2 border-gray-400 px-4 py-2" style={{
+                      borderBottomStyle: 'inset'
+                    }}>
+                      <h4 className="font-bold text-gray-800 font-mono">📋 ANALYSIS REPORT</h4>
+                    </div>
+                    <div className="p-4">
+                      <div className="bg-black text-green-400 p-4 border-2 border-gray-600 font-mono text-sm leading-relaxed overflow-x-auto max-h-96 overflow-y-auto">
+                        <pre className="whitespace-pre-wrap">
+                          {selectedAnalysis.content}
+                        </pre>
+                      </div>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-32">
-                  <div className="text-gray-500">Loading analysis...</div>
+                  <div className="bg-yellow-100 border-2 border-yellow-400 p-4 font-mono text-yellow-800" style={{
+                    borderStyle: 'inset'
+                  }}>
+                    ⏳ Loading analysis...
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   );
 }
 
