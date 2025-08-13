@@ -1,16 +1,12 @@
 {
   "manifest_version": 3,
   "name": "CI HQ - The No BS CI Tool",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Extract competitor intelligence from any website with AI-powered analysis. No bullsh*t, just results.",
   "permissions": [
     "activeTab",
     "storage",
-    "scripting",
-    "contextMenus",
-    "notifications",
-    "tabs",
-    "identity"
+    "tabs"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -21,7 +17,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://localhost:*/*", "https://*.vercel.app/*", "https://dashboard.getcihq.com/*"],
+      "matches": ["https://*.vercel.app/*", "https://dashboard.getcihq.com/*"],
       "js": ["content-auth.js"]
     }
   ],
