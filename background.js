@@ -96,10 +96,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'startAnalysis') {
     startBackgroundAnalysis(message)
       .then(() => {
+        console.log('Background analysis completed successfully for job:', message.jobId);
         sendResponse({ success: true });
       })
       .catch((error) => {
-        console.error('Background analysis error:', error);
+        console.error('Background analysis error for job:', message.jobId, error);
+        
+        // Clean up failed job
+        chrome.storage.local.remove('current_job').catch(() => {});
+        
         chrome.runtime.sendMessage({
           type: 'analysisError',
           jobId: message.jobId,
@@ -235,6 +240,7 @@ async function finishUserOAuth(url, tabId) {
 async function startBackgroundAnalysis(payload) {
   const { tabId, jobId } = payload;
 
+  console.log('Starting background analysis for job:', jobId);
   chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: 'Extracting page content...' });
 
   // Check if user is authenticated with Supabase
@@ -329,12 +335,19 @@ async function startBackgroundAnalysis(payload) {
   chrome.runtime.sendMessage({ type: 'analysisProgress', jobId, message: `Contacting AI API (${model})...` });
   
   // Use Supabase Edge Function instead of direct OpenAI API call
-  const data = await callOpenAIViaEdgeFunction({
-    model,
-    messages: requestBody.messages,
-    max_tokens: requestBody.max_tokens,
-    temperature: requestBody.temperature
-  });
+  let data;
+  try {
+    data = await callOpenAIViaEdgeFunction({
+      model,
+      messages: requestBody.messages,
+      max_tokens: requestBody.max_tokens,
+      temperature: requestBody.temperature
+    });
+  } catch (error) {
+    console.error('AI API call failed:', error);
+    chrome.runtime.sendMessage({ type: 'analysisError', jobId, error: `AI API error: ${error.message}` });
+    throw error;
+  }
   const analysis = data.choices?.[0]?.message?.content || '';
   const modelName = await getInitialModel();
   const reportType = isPricingPage ? 'PRICING ANALYSIS' : 'FEATURE EXTRACTION';
@@ -375,7 +388,15 @@ async function startBackgroundAnalysis(payload) {
     console.warn('Auto-save to Supabase failed:', error.message);
   }
 
+  console.log('Analysis completed for job:', jobId);
   chrome.runtime.sendMessage({ type: 'analysisComplete', jobId, pageData, report });
+
+  // Clean up the current job
+  try {
+    await chrome.storage.local.remove('current_job');
+  } catch (e) {
+    console.warn('Failed to clean up job:', e);
+  }
 
   // Notify user even if popup is closed
   try {
