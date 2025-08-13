@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "CI Feature Extractor",
-  "version": "1.0",
-  "description": "Extract competitor features with AI assistance",
+  "name": "CI HQ - The No BS CI Tool",
+  "version": "1.0.0",
+  "description": "Extract competitor intelligence from any website with AI-powered analysis. No bullsh*t, just results.",
   "permissions": [
     "activeTab",
     "storage",
@@ -24,5 +24,12 @@
       "matches": ["http://localhost:*/*", "https://*.vercel.app/*", "https://dashboard.getcihq.com/*"],
       "js": ["content-auth.js"]
     }
-  ]
+  ],
+  "icons": {
+    "16": "public/icon16.png",
+    "48": "public/icon48.png",
+    "128": "public/icon128.png"
+  },
+  "author": "CI HQ",
+  "homepage_url": "https://dashboard.getcihq.com"
 }

@@ -25,8 +25,6 @@ export default function DashboardPage() {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysisUrl, setAnalysisUrl] = useState('');
   const [selectedAnalysis, setSelectedAnalysis] = useState<Analysis | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -79,56 +77,6 @@ export default function DashboardPage() {
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
   }, [analyses]);
 
-  async function performAnalysis() {
-    if (!analysisUrl.trim()) {
-      setError('Please enter a URL to analyze');
-      return;
-    }
-
-    try {
-      setAnalyzing(true);
-      setError(null);
-      
-      const supabase: SupabaseClient = getSupabaseClient();
-      const { data: session } = await supabase.auth.getSession();
-      
-      if (!session.session?.access_token) {
-        setError('Please log in to perform analysis');
-        return;
-      }
-
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: analysisUrl,
-          accessToken: session.session.access_token
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Analysis failed');
-      }
-
-      const result = await response.json();
-      
-      // Refresh the analyses list
-      const { data, error } = await supabase
-        .from('analyses')
-        .select('id,title,url,domain,analysis_type,created_at,is_favorite,content')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      
-      if (error) throw error;
-      setAnalyses(data || []);
-      setAnalysisUrl('');
-      
-    } catch (e: any) {
-      setError(e?.message || 'Failed to perform analysis');
-    } finally {
-      setAnalyzing(false);
-    }
-  }
 
   async function deleteAnalysis(id: string) {
     try {
@@ -190,7 +138,7 @@ export default function DashboardPage() {
   }, [sidebarOpen]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-400 via-gray-300 to-gray-200">
+    <div className="min-h-screen bg-gradient-to-br from-gray-400 via-gray-300 to-gray-200 overflow-x-hidden">
       {/* Background pattern */}
       <div className="fixed inset-0 opacity-30 pointer-events-none">
         <div className="absolute inset-0" style={{
@@ -201,9 +149,9 @@ export default function DashboardPage() {
         }}></div>
       </div>
 
-      <main className="flex relative">
+      <main className="flex relative min-w-0">
         <Sidebar />
-        <div className="flex-1 p-6">
+        <div className="flex-1 p-3 sm:p-6 min-w-0 max-w-full">
           {/* Header with 90s styling */}
           <div className="bg-gray-200 border-4 border-gray-400 mb-6 shadow-lg" style={{
             borderStyle: 'outset'
@@ -246,40 +194,6 @@ export default function DashboardPage() {
             </div>
           )}
           
-          {/* Analysis Input Section */}
-          <div className="bg-gray-200 border-4 border-gray-400 mb-6 shadow-lg" style={{
-            borderStyle: 'outset'
-          }}>
-            <div className="bg-gray-300 border-b-2 border-gray-400 px-4 py-2" style={{
-              borderBottomStyle: 'inset'
-            }}>
-              <h2 className="font-bold text-gray-800 font-mono">📡 ANALYZE NEW WEBSITE</h2>
-            </div>
-            <div className="p-4">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-2">
-                <input
-                  type="url"
-                  placeholder="Enter website URL to analyze (e.g., https://example.com)"
-                  value={analysisUrl}
-                  onChange={(e) => setAnalysisUrl(e.target.value)}
-                  className="flex-1 p-3 border-2 border-gray-400 font-mono text-sm min-w-0"
-                  style={{ borderStyle: 'inset' }}
-                  disabled={analyzing}
-                />
-                <button
-                  onClick={performAnalysis} 
-                  disabled={analyzing || !analysisUrl.trim()}
-                  className="px-6 py-3 bg-blue-500 text-white font-bold border-2 border-gray-400 font-mono text-sm hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
-                  style={{ borderStyle: 'outset' }}
-                >
-                  {analyzing ? '⏳ ANALYZING...' : '🚀 ANALYZE'}
-                </button>
-              </div>
-              <p className="text-xs text-gray-600 font-mono">
-                Enter a competitor website URL to extract features, pricing, and key information.
-              </p>
-            </div>
-          </div>
 
           {/* Search and Filters */}
           <div className="bg-gray-200 border-4 border-gray-400 mb-6 shadow-lg" style={{
@@ -343,64 +257,64 @@ export default function DashboardPage() {
               <div className="overflow-x-auto bg-white border-2 border-gray-400" style={{
                 borderStyle: 'inset'
               }}>
-                <table className="w-full border-collapse font-mono text-sm min-w-[800px]">
+                <table className="w-full border-collapse font-mono text-xs sm:text-sm min-w-[700px]">
                   <thead>
                     <tr className="bg-gray-100 border-b-2 border-gray-300">
-                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[25%]">TITLE</th>
-                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[12%]">DOMAIN</th>
-                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[10%]">TYPE</th>
-                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[25%]">CONTENT</th>
-                      <th className="py-2 px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[13%]">CREATED</th>
-                      <th className="py-2 px-2 text-left font-bold text-gray-700 w-[15%]">ACTIONS</th>
+                      <th className="py-1 px-1 sm:py-2 sm:px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[30%]">TITLE</th>
+                      <th className="py-1 px-1 sm:py-2 sm:px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[15%]">DOMAIN</th>
+                      <th className="py-1 px-1 sm:py-2 sm:px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[8%]">TYPE</th>
+                      <th className="py-1 px-1 sm:py-2 sm:px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[22%]">CONTENT</th>
+                      <th className="py-1 px-1 sm:py-2 sm:px-2 text-left font-bold text-gray-700 border-r border-gray-300 w-[12%]">CREATED</th>
+                      <th className="py-1 px-1 sm:py-2 sm:px-2 text-left font-bold text-gray-700 w-[13%]">ACTIONS</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(loading ? [] : filtered).map((a) => (
                       <tr key={a.id} className="border-b border-gray-200 hover:bg-gray-50">
-                        <td className="py-2 px-2 align-top border-r border-gray-200 w-[25%]">
+                        <td className="py-1 px-1 sm:py-2 sm:px-2 align-top border-r border-gray-200 w-[30%]">
                           <a 
                             href={a.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-blue-600 hover:underline font-semibold block truncate"
+                            className="text-blue-600 hover:underline font-semibold block truncate text-xs sm:text-sm"
                             title={a.title}
                           >
                             {a.title}
                           </a>
-                          <div className="text-xs text-gray-500 mt-1 truncate" title={a.url}>
-                            {a.url}
+                          <div className="text-xs text-gray-500 mt-1 truncate hidden sm:block" title={a.url}>
+                            {a.url.length > 40 ? `${a.url.substring(0, 40)}...` : a.url}
                           </div>
                         </td>
-                        <td className="py-2 px-2 align-top border-r border-gray-200 text-gray-700 w-[12%] truncate" title={a.domain}>
+                        <td className="py-1 px-1 sm:py-2 sm:px-2 align-top border-r border-gray-200 text-gray-700 w-[15%] truncate text-xs" title={a.domain}>
                           {a.domain}
                         </td>
-                        <td className="py-2 px-2 align-top border-r border-gray-200 w-[10%]">
+                        <td className="py-1 px-1 sm:py-2 sm:px-2 align-top border-r border-gray-200 w-[8%]">
                           <span className="bg-blue-100 text-blue-800 px-1 py-1 rounded text-xs uppercase block text-center">
-                            {a.analysis_type.replace('_', ' ').substring(0, 8)}
+                            {a.analysis_type.replace('_', ' ').substring(0, 4)}
                           </span>
                         </td>
-                        <td className="py-2 px-2 align-top border-r border-gray-200 w-[25%]">
-                          <div className="text-xs text-gray-600 line-clamp-3" title={a.content || ''}>
-                            {a.content ? (a.content.length > 100 ? `${a.content.slice(0, 100)}…` : a.content) : '—'}
+                        <td className="py-1 px-1 sm:py-2 sm:px-2 align-top border-r border-gray-200 w-[22%]">
+                          <div className="text-xs text-gray-600 line-clamp-2" title={a.content || ''}>
+                            {a.content ? (a.content.length > 80 ? `${a.content.slice(0, 80)}…` : a.content) : '—'}
                           </div>
                         </td>
-                        <td className="py-2 px-2 align-top border-r border-gray-200 text-xs text-gray-600 w-[13%]">
+                        <td className="py-1 px-1 sm:py-2 sm:px-2 align-top border-r border-gray-200 text-xs text-gray-600 w-[12%]">
                           <div className="whitespace-nowrap">
                             {new Date(a.created_at).toLocaleDateString('en-US', {
-                              year: '2-digit', month: '2-digit', day: '2-digit'
+                              month: '2-digit', day: '2-digit'
                             })}
                           </div>
-                          <div className="whitespace-nowrap">
+                          <div className="whitespace-nowrap hidden sm:block">
                             {new Date(a.created_at).toLocaleTimeString('en-US', {
                               hour: '2-digit', minute: '2-digit', hour12: false
                             })}
                           </div>
                         </td>
-                        <td className="py-2 px-2 align-top w-[15%]">
+                        <td className="py-1 px-1 sm:py-2 sm:px-2 align-top w-[13%]">
                           <div className="flex flex-col gap-1">
                             <button 
                               onClick={() => openAnalysisSidebar(a.id)}
-                              className="px-2 py-1 bg-green-500 text-white text-xs font-bold border border-gray-400 hover:bg-green-600 w-full"
+                              className="px-1 py-1 bg-green-500 text-white text-xs font-bold border border-gray-400 hover:bg-green-600 w-full"
                               style={{ borderStyle: 'outset' }}
                             >
                               VIEW
@@ -408,10 +322,10 @@ export default function DashboardPage() {
                             <button
                               onClick={() => confirmAndDelete(a.id)}
                               disabled={deletingId === a.id}
-                              className="px-2 py-1 bg-red-500 text-white text-xs font-bold border border-gray-400 hover:bg-red-600 disabled:bg-gray-400 w-full"
+                              className="px-1 py-1 bg-red-500 text-white text-xs font-bold border border-gray-400 hover:bg-red-600 disabled:bg-gray-400 w-full"
                               style={{ borderStyle: 'outset' }}
                             >
-                              {deletingId === a.id ? 'DEL...' : 'DEL'}
+                              {deletingId === a.id ? 'DEL' : 'DEL'}
                             </button>
                           </div>
                         </td>
