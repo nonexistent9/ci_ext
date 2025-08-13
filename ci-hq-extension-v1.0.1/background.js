@@ -63,15 +63,9 @@ async function cleanupStaleJobs() {
 }
 
 // Handle context menu clicks
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'openDashboard') {
     try {
-      // Request tabs permission only when needed
-      const hasTabsPermission = await chrome.permissions.contains({ permissions: ['tabs'] });
-      if (!hasTabsPermission) {
-        await chrome.permissions.request({ permissions: ['tabs'] });
-      }
-      
       const url = (typeof WEB_DASHBOARD_URL !== 'undefined' && WEB_DASHBOARD_URL) || 'http://localhost:3000';
       chrome.tabs.create({ url });
     } catch (_) {
