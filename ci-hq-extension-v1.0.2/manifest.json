@@ -6,7 +6,18 @@
   "permissions": [
     "activeTab",
     "storage",
-    "tabs"
+    "contextMenus",
+    "scripting",
+    "notifications"
+  ],
+  "optional_permissions": [
+    "tabs",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://*.vercel.app/*",
+    "https://dashboard.getcihq.com/*",
+    "https://*.supabase.co/*"
   ],
   "action": {
     "default_popup": "popup.html",
