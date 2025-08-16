@@ -43,6 +43,7 @@ export default function DashboardPage() {
         const { data, error } = await supabase
           .from('analyses')
           .select('id,title,url,domain,analysis_type,created_at,is_favorite,content')
+          .eq('user_id', sessionRes.session.user.id)
           .order('created_at', { ascending: false })
           .limit(50);
         if (error) throw error;
@@ -81,7 +82,11 @@ export default function DashboardPage() {
   async function deleteAnalysis(id: string) {
     try {
       const supabase: SupabaseClient = getSupabaseClient();
-      const { error } = await supabase.from('analyses').delete().eq('id', id);
+      const { data: sessionRes } = await supabase.auth.getSession();
+      if (!sessionRes.session) {
+        throw new Error('Authentication required');
+      }
+      const { error } = await supabase.from('analyses').delete().eq('id', id).eq('user_id', sessionRes.session.user.id);
       if (error) throw error;
       setAnalyses(prev => prev.filter(a => a.id !== id));
     } catch (e: any) {
@@ -104,10 +109,15 @@ export default function DashboardPage() {
   async function openAnalysisSidebar(analysisId: string) {
     try {
       const supabase: SupabaseClient = getSupabaseClient();
+      const { data: sessionRes } = await supabase.auth.getSession();
+      if (!sessionRes.session) {
+        throw new Error('Authentication required');
+      }
       const { data, error } = await supabase
         .from('analyses')
         .select('*')
         .eq('id', analysisId)
+        .eq('user_id', sessionRes.session.user.id)
         .single();
       
       if (error) throw error;

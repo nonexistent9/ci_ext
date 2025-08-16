@@ -145,8 +145,6 @@ def create_fallback_icons():
         print(f"📄 Created basic {filename}")
 
 def main():
-    os.chdir('/Users/varun/projects/ci_ext/ci-hq-extension-final')
-    
     print("🎯 Creating CI-themed icons for CI HQ Extension...")
     
     if PIL_AVAILABLE:
